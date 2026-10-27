@@ -1,0 +1,939 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>River Generator</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    padding: 20px;
+    background: #171b1a;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+}
+
+h2 { margin: 0 0 8px; }
+
+p {
+    font-size: 13px;
+    color: #b8c8bb;
+}
+
+#layout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+#map {
+    display: block;
+    border: 2px solid #555;
+    image-rendering: pixelated;
+    max-width: 100%;
+    background: #83b86a;
+}
+
+#controls {
+    width: 280px;
+    padding: 15px;
+    background: #252b28;
+    border: 1px solid #45564a;
+    border-radius: 8px;
+}
+
+button {
+    background: #405d50;
+    color: #fff;
+    border: 1px solid #71917b;
+    border-radius: 5px;
+    padding: 10px 15px;
+    cursor: pointer;
+}
+
+button:hover { background: #527661; }
+
+label {
+    display: block;
+    margin: 12px 0;
+    font-size: 13px;
+}
+
+input[type="number"] {
+    width: 75px;
+    padding: 5px;
+    background: #151c18;
+    color: white;
+    border: 1px solid #607365;
+}
+
+#status {
+    margin-top: 12px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #a0d8e8;
+}
+
+#rules {
+    margin-top: 12px;
+    max-height: 280px;
+    overflow: auto;
+    white-space: pre-wrap;
+    font: 11px monospace;
+    line-height: 1.5;
+    background: #151c18;
+    padding: 8px;
+    border: 1px solid #45564a;
+}
+</style>
+</head>
+
+<body>
+
+<h2>River Generator</h2>
+<p>20 × 12 overworld — fixed river neighbor rules</p>
+
+<div id="layout">
+
+    <canvas id="map" width="800" height="480"></canvas>
+
+    <div id="controls">
+
+        <button onclick="generateRivers()">
+            Generate Rivers
+        </button>
+
+        <label>
+            Number of rivers:
+            <input id="riverCount"
+                   type="number"
+                   min="1"
+                   max="8"
+                   value="2">
+        </label>
+
+        <label>
+            Maximum river length:
+            <input id="riverLength"
+                   type="number"
+                   min="1"
+                   max="100"
+                   value="10">
+        </label>
+
+        <label>
+            <input id="showGrid"
+                   type="checkbox"
+                   checked
+                   onchange="drawMap()">
+            Show grid
+        </label>
+
+        <div id="status"></div>
+
+        <h4>Fixed Neighbor Rules</h4>
+        <div id="rules"></div>
+
+    </div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   MAP
+========================================================= */
+
+const MAP_W = 20;
+const MAP_H = 12;
+const TILE_SIZE = 40;
+
+const canvas = document.getElementById("map");
+const ctx = canvas.getContext("2d");
+
+ctx.imageSmoothingEnabled = false;
+
+function createEmptyMap() {
+    return Array.from(
+        { length: MAP_H },
+        () => Array(MAP_W).fill(null)
+    );
+}
+
+let mapData = createEmptyMap();
+
+/* =========================================================
+   COLORS
+========================================================= */
+
+const COLORS = {
+    11: "#83b86a",
+    12: "#a0c784",
+    15: "#a0d8e8"
+};
+
+/* =========================================================
+   GRASS SPRITE
+========================================================= */
+
+const GRASS = [
+    11,11,11,11,11,11,11,11,
+    11,11,11,11,12,11,11,11,
+    11,11,12,11,11,11,11,11,
+    11,11,11,11,11,11,12,11,
+    11,11,11,11,11,11,12,11,
+    11,12,11,11,11,11,11,11,
+    11,11,11,11,11,11,11,11,
+    11,11,11,12,11,11,11,11
+];
+
+/* =========================================================
+   RIVER SPRITES
+========================================================= */
+
+const RIVER_SPRITES = {
+
+    22: [
+        0,15,0,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,0,0,15,0,0,0,0,
+        0,0,0,0,15,0,0,0,
+        0,0,15,0,15,0,0,0,
+        0,15,0,15,0,0,0,0,
+        15,0,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0
+    ],
+
+    23: [
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,15,15,0,
+        15,0,0,0,15,0,0,15,
+        15,0,15,15,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0
+    ],
+
+    48: [
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        15,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0
+    ]
+};
+
+/* =========================================================
+   DIRECTIONS
+
+   0 = North
+   1 = East
+   2 = South
+   3 = West
+========================================================= */
+
+const DIR = [
+    { name: "N", dx: 0, dy: -1 },
+    { name: "E", dx: 1, dy: 0 },
+    { name: "S", dx: 0, dy: 1 },
+    { name: "W", dx: -1, dy: 0 }
+];
+
+/* =========================================================
+   FIXED NEIGHBOR RULES
+
+   Each entry:
+       from: [sprite, rotation, flipH, flipV]
+
+   Neighbor:
+       [sprite, rotation, flipH, flipV]
+
+   Rotation values:
+       0 = 0 degrees
+       1 = 90 degrees
+       2 = 180 degrees
+       3 = 270 degrees
+========================================================= */
+
+const FIXED_RULES = [
+
+    /* =====================================================
+       RIVER 1 — SPRITE 22
+    ===================================================== */
+
+    {
+        from: [22, 0, false, false],
+        neighbors: {
+            N: [[48,0,false,false], [23,2,true,false]],
+            E: [],
+            S: [[23,0,false,false], [48,2,true,false]],
+            W: []
+        }
+    },
+
+    {
+        from: [22, 1, false, false],
+        neighbors: {
+            N: [],
+            E: [[48,1,false,false], [23,3,true,false]],
+            S: [],
+            W: [[23,1,false,false], [48,3,true,false]]
+        }
+    },
+
+    {
+        from: [22, 2, false, false],
+        neighbors: {
+            N: [[23,2,false,false], [48,0,true,false]],
+            E: [],
+            S: [[48,2,false,false], [23,0,true,false]],
+            W: []
+        }
+    },
+
+    {
+        from: [22, 3, false, false],
+        neighbors: {
+            N: [],
+            E: [[23,3,false,false], [48,1,true,false]],
+            S: [],
+            W: [[48,3,false,false], [23,1,true,false]]
+        }
+    },
+
+    /* =====================================================
+       RIVER 2 — SPRITE 23
+    ===================================================== */
+
+    {
+        from: [23, 0, false, false],
+        neighbors: {
+            N: [[22,0,false,false], [48,0,false,false]],
+            E: [[48,0,false,false]],
+            S: [],
+            W: []
+        }
+    },
+
+    {
+        from: [23, 1, false, false],
+        neighbors: {
+            N: [],
+            E: [[22,1,false,false], [48,1,false,false]],
+            S: [[48,1,false,false]],
+            W: []
+        }
+    },
+
+    {
+        from: [23, 2, false, false],
+        neighbors: {
+            N: [],
+            E: [],
+            S: [[22,2,false,false], [48,2,false,false]],
+            W: [[48,2,false,false]]
+        }
+    },
+
+    {
+        from: [23, 3, false, false],
+        neighbors: {
+            N: [[48,3,false,false]],
+            E: [],
+            S: [],
+            W: [[22,3,false,false], [48,3,false,false]]
+        }
+    },
+
+    {
+        from: [23, 2, true, false],
+        neighbors: {
+            N: [],
+            E: [[48,2,true,false]],
+            S: [[22,0,false,false]],
+            W: []
+        }
+    },
+
+    {
+        from: [23, 3, true, false],
+        neighbors: {
+            N: [],
+            E: [],
+            S: [[48,3,true,false]],
+            W: [[22,1,false,false]]
+        }
+    },
+
+    {
+        from: [23, 0, true, false],
+        neighbors: {
+            N: [[22,2,false,false]],
+            E: [],
+            S: [],
+            W: [[48,0,true,false]]
+        }
+    },
+
+    {
+        from: [23, 1, true, false],
+        neighbors: {
+            N: [[48,1,true,false]],
+            E: [[22,3,false,false]],
+            S: [],
+            W: []
+        }
+    },
+
+    /* =====================================================
+       RIVER 3 — SPRITE 48
+    ===================================================== */
+
+    {
+        from: [48, 0, false, false],
+        neighbors: {
+            N: [],
+            E: [],
+            S: [[22,0,false,false], [23,0,false,false]],
+            W: [[23,0,false,false]]
+        }
+    },
+
+    {
+        from: [48, 1, false, false],
+        neighbors: {
+            N: [[23,1,false,false]],
+            E: [],
+            S: [],
+            W: [[22,1,false,false], [23,1,false,false]]
+        }
+    },
+
+    {
+        from: [48, 2, false, false],
+        neighbors: {
+            N: [[22,2,false,false], [23,2,false,false]],
+            E: [[23,2,false,false]],
+            S: [],
+            W: []
+        }
+    },
+
+    {
+        from: [48, 3, false, false],
+        neighbors: {
+            N: [],
+            E: [[22,3,false,false], [23,3,false,false]],
+            S: [[23,3,false,false]],
+            W: []
+        }
+    },
+
+    {
+        from: [48, 2, true, false],
+        neighbors: {
+            N: [[22,0,false,false]],
+            E: [],
+            S: [],
+            W: [[23,2,true,false]]
+        }
+    },
+
+    {
+        from: [48, 3, true, false],
+        neighbors: {
+            N: [[23,3,true,false]],
+            E: [[22,1,false,false]],
+            S: [],
+            W: []
+        }
+    },
+
+    {
+        from: [48, 0, true, false],
+        neighbors: {
+            N: [],
+            E: [[23,0,true,false]],
+            S: [[22,2,false,false]],
+            W: []
+        }
+    },
+
+    {
+        from: [48, 1, true, false],
+        neighbors: {
+            N: [],
+            E: [],
+            S: [[23,1,true,false]],
+            W: [[22,3,false,false]]
+        }
+    }
+
+];
+
+/* =========================================================
+   ORIENTATION HELPERS
+========================================================= */
+
+function makeCell(data) {
+    return {
+        sprite: data[0],
+        rotation: data[1],
+        flipH: data[2],
+        flipV: data[3]
+    };
+}
+
+function copyCell(cell) {
+    return {
+        sprite: cell.sprite,
+        rotation: cell.rotation,
+        flipH: Boolean(cell.flipH),
+        flipV: Boolean(cell.flipV)
+    };
+}
+
+function cellKey(cell) {
+    return [
+        cell.sprite,
+        cell.rotation,
+        Number(cell.flipH),
+        Number(cell.flipV)
+    ].join(":");
+}
+
+function rotateCell(cell, turns) {
+    return {
+        ...copyCell(cell),
+        rotation: (cell.rotation + turns) % 4
+    };
+}
+
+/* =========================================================
+   BUILD NEIGHBOR TABLE
+
+   Add the supplied relationships, their four
+   rotations, and reverse connections.
+========================================================= */
+
+const neighborRules = new Map();
+
+function getRuleSlots(cell) {
+
+    const key = cellKey(cell);
+
+    if (!neighborRules.has(key)) {
+        neighborRules.set(
+            key,
+            [[], [], [], []]
+        );
+    }
+
+    return neighborRules.get(key);
+}
+
+function addRule(from, direction, to) {
+
+    const list = getRuleSlots(from)[direction];
+    const key = cellKey(to);
+
+    if (!list.some(c => cellKey(c) === key)) {
+        list.push(copyCell(to));
+    }
+}
+
+function buildRules() {
+
+    neighborRules.clear();
+
+    for (const rule of FIXED_RULES) {
+
+        const source = makeCell(rule.from);
+
+        for (let direction = 0; direction < 4; direction++) {
+
+            const name = DIR[direction].name;
+
+            for (const data of rule.neighbors[name]) {
+
+                const target = makeCell(data);
+
+                for (let turns = 0; turns < 4; turns++) {
+
+                    const from = rotateCell(source, turns);
+                    const to = rotateCell(target, turns);
+                    const d = (direction + turns) % 4;
+
+                    addRule(from, d, to);
+
+                    addRule(
+                        to,
+                        (d + 2) % 4,
+                        from
+                    );
+                }
+            }
+        }
+    }
+}
+
+/* =========================================================
+   PIXEL TRANSFORMATION
+
+   Flips first, then clockwise rotation.
+========================================================= */
+
+function transformPixel(
+    x, y, rotation,
+    flipH = false,
+    flipV = false
+) {
+
+    if (flipH) x = 7 - x;
+    if (flipV) y = 7 - y;
+
+    switch (rotation & 3) {
+        case 1: return [7 - y, x];
+        case 2: return [7 - x, 7 - y];
+        case 3: return [y, 7 - x];
+        default: return [x, y];
+    }
+}
+
+/* =========================================================
+   DRAW SPRITE
+========================================================= */
+
+function drawSprite(
+    pixels, rotation,
+    x, y, size,
+    flipH = false,
+    flipV = false
+) {
+
+    const pixelSize = size / 8;
+
+    for (let py = 0; py < 8; py++) {
+        for (let px = 0; px < 8; px++) {
+
+            const color = pixels[py * 8 + px];
+
+            if (!color)
+                continue;
+
+            const [rx, ry] = transformPixel(
+                px, py,
+                rotation,
+                flipH,
+                flipV
+            );
+
+            ctx.fillStyle = COLORS[color];
+
+            ctx.fillRect(
+                x + rx * pixelSize,
+                y + ry * pixelSize,
+                pixelSize,
+                pixelSize
+            );
+        }
+    }
+}
+
+/* =========================================================
+   DRAW MAP
+========================================================= */
+
+function drawMap() {
+
+    ctx.clearRect(
+        0, 0,
+        canvas.width,
+        canvas.height
+    );
+
+    for (let y = 0; y < MAP_H; y++) {
+        for (let x = 0; x < MAP_W; x++) {
+
+            const px = x * TILE_SIZE;
+            const py = y * TILE_SIZE;
+
+            drawSprite(
+                GRASS, 0,
+                px, py, TILE_SIZE
+            );
+
+            const cell = mapData[y][x];
+
+            if (cell) {
+                drawSprite(
+                    RIVER_SPRITES[cell.sprite],
+                    cell.rotation,
+                    px, py, TILE_SIZE,
+                    cell.flipH,
+                    cell.flipV
+                );
+            }
+        }
+    }
+
+    if (document.getElementById("showGrid").checked) {
+
+        ctx.strokeStyle = "rgba(0,0,0,0.2)";
+        ctx.lineWidth = 1;
+
+        for (let x = 0; x <= MAP_W; x++) {
+            ctx.beginPath();
+            ctx.moveTo(x * TILE_SIZE + 0.5, 0);
+            ctx.lineTo(x * TILE_SIZE + 0.5, MAP_H * TILE_SIZE);
+            ctx.stroke();
+        }
+
+        for (let y = 0; y <= MAP_H; y++) {
+            ctx.beginPath();
+            ctx.moveTo(0, y * TILE_SIZE + 0.5);
+            ctx.lineTo(MAP_W * TILE_SIZE, y * TILE_SIZE + 0.5);
+            ctx.stroke();
+        }
+    }
+}
+
+/* =========================================================
+   MAP HELPERS
+========================================================= */
+
+function inMap(x, y) {
+    return (
+        x >= 0 && x < MAP_W &&
+        y >= 0 && y < MAP_H
+    );
+}
+
+function randomItem(items) {
+    return items[
+        Math.floor(Math.random() * items.length)
+    ];
+}
+
+/* =========================================================
+   FIND NEXT PLACEMENTS
+
+   Reject occupied cells and immediate backtracking.
+   Favor southward movement.
+========================================================= */
+
+function findNextOptions(x, y, cell, entry) {
+
+    const slots = neighborRules.get(cellKey(cell));
+
+    if (!slots)
+        return [];
+
+    const options = [];
+
+    for (let d = 0; d < 4; d++) {
+
+        if (d === entry)
+            continue;
+
+        const nx = x + DIR[d].dx;
+        const ny = y + DIR[d].dy;
+
+        if (!inMap(nx, ny))
+            continue;
+
+        if (mapData[ny][nx])
+            continue;
+
+        for (const next of slots[d]) {
+
+            const weight =
+                d === 2 ? 6 :
+                d === 0 ? 1 : 3;
+
+            for (let k = 0; k < weight; k++) {
+                options.push({
+                    x: nx,
+                    y: ny,
+                    cell: next,
+                    entry: (d + 2) % 4
+                });
+            }
+        }
+    }
+
+    return options;
+}
+
+/* =========================================================
+   GENERATE SINGLE RIVER
+========================================================= */
+
+function generateSingleRiver(startX, maxLength) {
+
+    let x = startX;
+    let y = 0;
+    let entry = 0;
+    let count = 0;
+
+    const starts = FIXED_RULES
+        .map(rule => makeCell(rule.from))
+        .filter(cell => {
+            const slots = neighborRules.get(cellKey(cell));
+            return slots && slots[2].length > 0;
+        });
+
+    if (!starts.length)
+        return 0;
+
+    let current = copyCell(randomItem(starts));
+
+    while (
+        count < maxLength &&
+        inMap(x, y) &&
+        !mapData[y][x]
+    ) {
+
+        mapData[y][x] = copyCell(current);
+        count++;
+
+        const options = findNextOptions(
+            x, y, current, entry
+        );
+
+        if (!options.length)
+            break;
+
+        const pick = randomItem(options);
+
+        x = pick.x;
+        y = pick.y;
+        current = copyCell(pick.cell);
+        entry = pick.entry;
+    }
+
+    return count;
+}
+
+/* =========================================================
+   GENERATE RIVERS
+========================================================= */
+
+function generateRivers() {
+
+    const count = Math.max(
+        1,
+        Math.min(
+            8,
+            Number(document.getElementById("riverCount").value) || 2
+        )
+    );
+
+    const maxLength = Math.max(
+        1,
+        Math.min(
+            100,
+            Number(document.getElementById("riverLength").value) || 10
+        )
+    );
+
+    mapData = createEmptyMap();
+
+    const lengths = [];
+
+    for (let i = 0; i < count; i++) {
+
+        const startX = Math.max(
+            0,
+            Math.min(
+                MAP_W - 1,
+                Math.floor(
+                    (i + 0.5) * MAP_W / count
+                )
+            )
+        );
+
+        lengths.push(
+            generateSingleRiver(startX, maxLength)
+        );
+    }
+
+    document.getElementById("status").textContent =
+        "Generated " + count +
+        " rivers. Lengths: " +
+        lengths.join(", ") +
+        " tiles. Rule variants: " +
+        neighborRules.size + ".";
+
+    drawMap();
+}
+
+/* =========================================================
+   SHOW FIXED RULES
+========================================================= */
+
+function showRules() {
+
+    const lines = [];
+
+    for (const rule of FIXED_RULES) {
+
+        const from = makeCell(rule.from);
+
+        lines.push(
+            "BASE: " +
+            from.sprite +
+            " @" + (from.rotation * 90) + "°" +
+            (from.flipH ? " H" : "")
+        );
+
+        for (const direction of DIR) {
+
+            const neighbors =
+                rule.neighbors[direction.name];
+
+            lines.push(
+                "  " + direction.name + ": " +
+                (
+                    neighbors.length
+                    ? neighbors.map(data => {
+
+                        const cell = makeCell(data);
+
+                        return (
+                            cell.sprite +
+                            "@" + (cell.rotation * 90) + "°" +
+                            (cell.flipH ? " H" : "")
+                        );
+                    }).join(", ")
+                    : "none"
+                )
+            );
+        }
+
+        lines.push("");
+    }
+
+    document.getElementById("rules").textContent =
+        lines.join("\n");
+}
+
+/* =========================================================
+   INITIALIZE
+========================================================= */
+
+buildRules();
+showRules();
+generateRivers();
+
+</script>
+</body>
+</html>

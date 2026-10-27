@@ -1,0 +1,1856 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dungeon Sound Editor</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 20px;
+    background: #151515;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+}
+
+h2 {
+    margin: 0 0 18px;
+}
+
+h3 {
+    margin: 0 0 12px;
+    font-size: 15px;
+}
+
+.editor {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+.panel {
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 16px;
+}
+
+.controlPanel {
+    width: 460px;
+}
+
+.codePanel {
+    width: 500px;
+}
+
+label {
+    display: block;
+    margin: 14px 0 6px;
+    font-size: 13px;
+}
+
+select,
+input[type=number],
+button {
+    background: #333;
+    color: #eee;
+    border: 1px solid #666;
+    padding: 7px 9px;
+    font-family: inherit;
+}
+
+select {
+    width: 100%;
+}
+
+button {
+    cursor: pointer;
+}
+
+button:hover {
+    background: #444;
+}
+
+button.primary {
+    background: #315a3b;
+    border-color: #5a9366;
+}
+
+.parameterRow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.parameterRow input[type=range] {
+    flex: 1;
+    min-width: 0;
+}
+
+.parameterRow input[type=number] {
+    width: 95px;
+}
+
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+textarea {
+    width: 100%;
+    background: #101010;
+    color: #ddd;
+    border: 1px solid #555;
+    padding: 12px;
+    font-family: Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    resize: vertical;
+}
+
+#singleSoundText {
+    height: 90px;
+}
+
+#allSoundsText {
+    height: 480px;
+}
+
+.section {
+    margin-top: 22px;
+    padding-top: 15px;
+    border-top: 1px solid #444;
+}
+
+.hint {
+    margin-top: 12px;
+    color: #aaa;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+#status {
+    min-height: 18px;
+    margin-top: 12px;
+    color: #aaddaa;
+    font-size: 12px;
+}
+
+.loopLabel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+}
+
+#envelopeCanvas {
+    display: block;
+    width: 100%;
+    height: 105px;
+    background: #141414;
+    border: 1px solid #444;
+    margin-top: 12px;
+}
+
+pre {
+    white-space: pre-wrap;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Dungeon Sound Editor</h2>
+
+<div class="editor">
+
+<div class="panel controlPanel">
+
+<h3>Sound Selection</h3>
+<select id="soundSelect"></select>
+
+<div class="controls">
+    <button class="primary" id="playButton">Play</button>
+    <button id="stopButton">Stop</button>
+
+    <label class="loopLabel">
+        <input type="checkbox" id="loopCheck">
+        Loop
+    </label>
+</div>
+
+<div class="section">
+
+<h3>Basic Sound Parameters</h3>
+
+<label>Waveform / Sound Type</label>
+
+<select id="waveformSelect">
+    <option value="0">0 - Sine</option>
+    <option value="1">1 - Square</option>
+    <option value="2">2 - Triangle</option>
+    <option value="3">3 - Sawtooth</option>
+    <option value="4">4 - Filtered Noise</option>
+</select>
+
+<div id="basicParameters"></div>
+
+</div>
+
+<div class="section">
+
+<h3>Advanced Sound Parameters</h3>
+
+<div id="advancedParameters"></div>
+
+<div class="hint">
+Vibrato changes oscillator pitch or noise-filter frequency.
+</div>
+
+<button id="clearAdvancedButton">
+    Clear Advanced Effects
+</button>
+
+</div>
+
+<div class="section">
+
+<h3>Noise Filter</h3>
+
+<label>Filter Mode</label>
+
+<select id="filterSelect">
+    <option value="0">Low-pass</option>
+    <option value="1">High-pass</option>
+    <option value="2">Band-pass</option>
+</select>
+
+<div class="hint">
+Noise filters shape the sound of scratches, hisses,
+footsteps, and other non-tonal effects.
+</div>
+
+</div>
+
+<div class="section">
+
+<h3>Volume Envelope</h3>
+
+<div id="envelopeParameters"></div>
+
+<canvas
+    id="envelopeCanvas"
+    width="420"
+    height="105">
+</canvas>
+
+<div class="hint">
+Attack controls the beginning. Sustain controls the
+middle volume. Release controls the ending.
+</div>
+
+</div>
+
+<div class="section">
+
+<h3>Rhythmic Repetition</h3>
+
+<div id="repeatParameters"></div>
+
+<div class="hint">
+Repeat Count: number of individual sounds.
+
+Repeat Interval: seconds between the starts of sounds.
+
+Timing Variation: randomizes the spacing to create
+natural footsteps, wingbeats, or scampering.
+
+A count of 1 disables repetition.
+</div>
+
+</div>
+
+<div class="section">
+
+<h3>Playback</h3>
+
+<label>Master Volume</label>
+
+<div class="parameterRow">
+    <input
+        type="range"
+        id="masterSlider"
+        min="0"
+        max="1"
+        step="0.01"
+        value="0.5">
+
+    <input
+        type="number"
+        id="masterNumber"
+        min="0"
+        max="1"
+        step="0.01"
+        value="0.5">
+</div>
+
+<div class="controls">
+    <button id="resetSelectedButton">Reset Sound</button>
+    <button id="resetAllButton">Reset All</button>
+</div>
+
+</div>
+
+<div id="status"></div>
+
+</div>
+
+<div class="panel codePanel">
+
+<h3>Selected Sound Array</h3>
+
+<textarea
+    id="singleSoundText"
+    spellcheck="false">
+</textarea>
+
+<div class="controls">
+    <button id="applySingleButton">Apply Sound</button>
+    <button id="copySingleButton">Copy</button>
+</div>
+
+<h3 style="margin-top:25px">
+Complete SOUNDS Array
+</h3>
+
+<textarea
+    id="allSoundsText"
+    spellcheck="false">
+</textarea>
+
+<div class="controls">
+    <button id="applyAllButton">Apply All</button>
+    <button id="copyAllButton">Copy All</button>
+</div>
+
+<div class="hint">
+
+Supported formats:
+
+<pre>
+5 values  - Original sound
+8 values  - Attack and vibrato
+11 values - Filter and envelope
+14 values - Repetition and timing
+</pre>
+
+New parameters are optional. Older sounds continue
+working without modification.
+
+</div>
+
+</div>
+
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   SOUND IDS
+========================================================= */
+
+const SOUND = {
+    STEP: 0,
+    SWORD: 1,
+    BOW: 2,
+    ARROW: 3,
+    PICKUP: 4,
+    KEY: 5,
+    HIT: 6,
+    DEATH: 7,
+    BAT: 8,
+    SNAKE: 9,
+    DEMON: 10,
+    DRAGON: 11,
+    WATER: 12,
+    WIND: 13,
+    RAT: 14,
+    SPIDER: 15,
+    BLOB: 16,
+    WINGED_DRAGON: 17
+};
+
+/* =========================================================
+   DEFAULT SOUNDS
+
+   Spider uses the new repetition format.
+   Other defaults retain their original format.
+========================================================= */
+
+const DEFAULT_SOUNDS = [
+
+    [4,1200,250,0.120,0.50],  // STEP
+    [4,1200,150,0.180,0.15],  // SWORD
+    [2,350,70,0.200,0.15],    // BOW
+    [4,1800,300,0.120,0.10],  // ARROW
+    [1,700,1100,0.120,0.08],  // PICKUP
+    [2,900,500,0.100,0.08],   // KEY
+    [4,500,80,0.180,0.20],    // HIT
+    [3,400,40,0.800,0.15],    // DEATH
+
+    [1,1800,900,0.140,0.06],  // BAT
+    [4,6500,3500,0.800,0.25], // SNAKE
+    [3,180,45,0.600,0.18],    // DEMON
+    [3,100,25,1.200,0.22],   // DRAGON
+    [4,300,200,0.800,0.05],   // WATER
+    [4,600,100,1.000,0.04],   // WIND
+    [1,2400,1100,0.120,0.09],// RAT
+
+    // SPIDER - six rapid scratch-clicks
+    [
+        4, 1800, 850, 0.045, 0.16,
+        0.001, 0, 0,
+        0, 0.10, 0.035,
+        6, 0.065, 0.30
+    ],
+
+    [2,110,45,0.500,0.16],   // BLOB
+    [3,140,25,1.500,0.25]    // WINGED_DRAGON
+
+];
+
+/* =========================================================
+   STATE
+========================================================= */
+
+let SOUNDS = DEFAULT_SOUNDS.map(s => s.slice());
+
+let selectedSoundID = 0;
+
+let audioCtx = null;
+let masterGain = null;
+let noiseBuffer = null;
+
+let soundVolume = 0.5;
+
+const activeSources = new Set();
+
+let looping = false;
+let loopTimer = null;
+
+const $ = id => document.getElementById(id);
+
+const getSound = () => SOUNDS[selectedSoundID];
+
+function showStatus(message) {
+    $("status").textContent = message;
+}
+
+/* =========================================================
+   PARAMETER DEFINITIONS
+========================================================= */
+
+const PARAMETERS = [
+
+    {
+        index: 1,
+        name: "Starting Frequency (Hz)",
+        min: 1,
+        max: 10000,
+        step: 1,
+        group: "basic"
+    },
+
+    {
+        index: 2,
+        name: "Ending Frequency (Hz)",
+        min: 1,
+        max: 10000,
+        step: 1,
+        group: "basic"
+    },
+
+    {
+        index: 3,
+        name: "Duration (seconds)",
+        min: 0.01,
+        max: 5,
+        step: 0.005,
+        group: "basic"
+    },
+
+    {
+        index: 4,
+        name: "Volume",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        group: "basic"
+    },
+
+    {
+        index: 5,
+        name: "Attack (seconds)",
+        min: 0,
+        max: 2,
+        step: 0.001,
+        group: "advanced"
+    },
+
+    {
+        index: 6,
+        name: "Vibrato Rate (Hz)",
+        min: 0,
+        max: 30,
+        step: 0.1,
+        group: "advanced"
+    },
+
+    {
+        index: 7,
+        name: "Vibrato Depth (Hz)",
+        min: 0,
+        max: 200,
+        step: 1,
+        group: "advanced"
+    },
+
+    {
+        index: 9,
+        name: "Sustain Level",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        group: "envelope"
+    },
+
+    {
+        index: 10,
+        name: "Release (seconds)",
+        min: 0,
+        max: 3,
+        step: 0.005,
+        group: "envelope"
+    },
+
+    {
+        index: 11,
+        name: "Repeat Count",
+        min: 1,
+        max: 16,
+        step: 1,
+        group: "repeat"
+    },
+
+    {
+        index: 12,
+        name: "Repeat Interval (seconds)",
+        min: 0.02,
+        max: 0.5,
+        step: 0.005,
+        group: "repeat"
+    },
+
+    {
+        index: 13,
+        name: "Timing Variation (0-1)",
+        min: 0,
+        max: 1,
+        step: 0.05,
+        group: "repeat"
+    }
+
+];
+
+/* =========================================================
+   PARAMETER DEFAULTS
+========================================================= */
+
+function parameterDefault(index) {
+
+    switch (index) {
+
+        case 9: return 0.3;
+        case 11: return 1;
+        case 12: return 0.065;
+        case 13: return 0;
+
+        default: return 0;
+
+    }
+
+}
+
+/* =========================================================
+   CREATE PARAMETER CONTROLS
+========================================================= */
+
+function initializeParameters() {
+
+    for (const p of PARAMETERS) {
+
+        const container = document.createElement("div");
+        const label = document.createElement("label");
+        const row = document.createElement("div");
+
+        label.textContent = p.name;
+        row.className = "parameterRow";
+
+        const slider = document.createElement("input");
+
+        slider.type = "range";
+        slider.min = p.min;
+        slider.max = p.max;
+        slider.step = p.step;
+        slider.id = "slider" + p.index;
+
+        const number = document.createElement("input");
+
+        number.type = "number";
+        number.min = p.min;
+        number.max =
+            p.index === 1 || p.index === 2
+                ? 20000
+                : p.index === 3
+                    ? 30
+                    : p.max;
+
+        number.step = p.step;
+        number.id = "number" + p.index;
+
+        slider.addEventListener("input", () => {
+
+            updateParameter(
+                p.index,
+                Number(slider.value)
+            );
+
+        });
+
+        number.addEventListener("change", () => {
+
+            const value = Number(number.value);
+
+            if (!Number.isFinite(value))
+                return;
+
+            updateParameter(
+                p.index,
+                Math.max(
+                    p.min,
+                    Math.min(Number(number.max), value)
+                )
+            );
+
+        });
+
+        row.append(slider, number);
+        container.append(label, row);
+
+        $(p.group + "Parameters").appendChild(container);
+
+    }
+
+}
+
+/* =========================================================
+   EXPAND SOUND ARRAY
+
+   5 -> 8 -> 11 -> 14
+
+   Preserve existing parameter values.
+========================================================= */
+
+function expandSound(index) {
+
+    const s = getSound();
+
+    if (index >= 5) {
+
+        while (s.length < 8)
+            s.push(0);
+
+    }
+
+    if (index >= 8) {
+
+        while (s.length < 11)
+            s.push(parameterDefault(s.length));
+
+    }
+
+    if (index >= 11) {
+
+        while (s.length < 14)
+            s.push(parameterDefault(s.length));
+
+    }
+
+}
+
+/* =========================================================
+   UPDATE PARAMETER
+========================================================= */
+
+function updateParameter(index, value) {
+
+    expandSound(index);
+
+    getSound()[index] = value;
+
+    $("slider" + index).value = value;
+    $("number" + index).value = value;
+
+    updateArrayText();
+    drawEnvelope();
+
+}
+
+/* =========================================================
+   SOUND SELECTOR
+========================================================= */
+
+function initializeSoundSelector() {
+
+    for (const [name, id] of Object.entries(SOUND)) {
+
+        const option = document.createElement("option");
+
+        option.value = id;
+
+        option.textContent =
+            String(id).padStart(2, "0") +
+            " - " + name;
+
+        $("soundSelect").appendChild(option);
+
+    }
+
+    $("soundSelect").addEventListener("change", () => {
+
+        stopAllSounds();
+
+        selectedSoundID =
+            Number($("soundSelect").value);
+
+        loadSelectedSound();
+
+    });
+
+}
+
+/* =========================================================
+   LOAD SELECTED SOUND
+========================================================= */
+
+function loadSelectedSound() {
+
+    const s = getSound();
+
+    $("soundSelect").value = selectedSoundID;
+
+    $("waveformSelect").value = s[0];
+    $("filterSelect").value = s[8] ?? 0;
+
+    for (const p of PARAMETERS) {
+
+        const value =
+            s[p.index] ?? parameterDefault(p.index);
+
+        $("slider" + p.index).value = value;
+        $("number" + p.index).value = value;
+
+    }
+
+    updateArrayText();
+    drawEnvelope();
+
+}
+
+/* =========================================================
+   FORMAT SOUND
+========================================================= */
+
+function formatSound(s) {
+
+    return "[" + s.map((value, index) => {
+
+        if (
+            index === 3 ||
+            index === 5 ||
+            index === 10 ||
+            index === 12
+        ) {
+            return Number(value).toFixed(3);
+        }
+
+        if (
+            index === 4 ||
+            index === 9 ||
+            index === 13
+        ) {
+            return Number(value).toFixed(2);
+        }
+
+        return String(value);
+
+    }).join(", ") + "]";
+
+}
+
+/* =========================================================
+   UPDATE ARRAY TEXT
+========================================================= */
+
+function updateArrayText() {
+
+    $("singleSoundText").value =
+        formatSound(getSound());
+
+    const names = Object.keys(SOUND);
+
+    $("allSoundsText").value =
+        "const SOUNDS = [\n\n" +
+
+        SOUNDS.map((s, i) =>
+
+            "    " +
+            formatSound(s) +
+            (i < SOUNDS.length - 1 ? "," : "") +
+            " // " + i + " " + names[i]
+
+        ).join("\n") +
+
+        "\n\n];";
+
+}
+
+/* =========================================================
+   VALIDATION
+========================================================= */
+
+function validateSound(s) {
+
+    if (
+        !Array.isArray(s) ||
+        ![5, 8, 11, 14].includes(s.length)
+    ) {
+        throw Error(
+            "Sound must contain 5, 8, 11, or 14 values."
+        );
+    }
+
+    if (!s.every(Number.isFinite))
+        throw Error("All values must be finite numbers.");
+
+    if (
+        !Number.isInteger(s[0]) ||
+        s[0] < 0 ||
+        s[0] > 4
+    ) {
+        throw Error("Invalid sound type.");
+    }
+
+    if (
+        s[1] < 1 || s[1] > 20000 ||
+        s[2] < 1 || s[2] > 20000
+    ) {
+        throw Error("Invalid frequency.");
+    }
+
+    if (s[3] <= 0 || s[3] > 30)
+        throw Error("Invalid duration.");
+
+    if (s[4] < 0 || s[4] > 1)
+        throw Error("Invalid volume.");
+
+    if (s.length >= 8) {
+
+        if (
+            s[5] < 0 || s[5] > 2 ||
+            s[6] < 0 || s[6] > 30 ||
+            s[7] < 0 || s[7] > 200
+        ) {
+            throw Error("Invalid advanced parameters.");
+        }
+
+    }
+
+    if (s.length >= 11) {
+
+        if (
+            !Number.isInteger(s[8]) ||
+            s[8] < 0 || s[8] > 2 ||
+            s[9] < 0 || s[9] > 1 ||
+            s[10] < 0 || s[10] > 3
+        ) {
+            throw Error("Invalid filter or envelope.");
+        }
+
+    }
+
+    if (s.length === 14) {
+
+        if (
+            !Number.isInteger(s[11]) ||
+            s[11] < 1 ||
+            s[11] > 16 ||
+            s[12] < 0.02 ||
+            s[12] > 0.5 ||
+            s[13] < 0 ||
+            s[13] > 1
+        ) {
+            throw Error("Invalid repetition settings.");
+        }
+
+    }
+
+    return true;
+
+}
+
+/* =========================================================
+   PARSE ARRAY TEXT
+========================================================= */
+
+function parseArrayText(text) {
+
+    text = text
+
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+
+        .replace(/\/\/[^\n\r]*/g, "")
+
+        .trim()
+
+        .replace(
+            /^(?:const|let|var)\s+SOUNDS\s*=\s*/,
+            ""
+        )
+
+        .replace(/;\s*$/, "")
+
+        .replace(/,\s*([\]}])/g, "$1");
+
+    return JSON.parse(text);
+
+}
+
+/* =========================================================
+   APPLY SOUND
+========================================================= */
+
+function applySingleSoundText() {
+
+    try {
+
+        const s = parseArrayText(
+            $("singleSoundText").value
+        );
+
+        validateSound(s);
+
+        stopAllSounds();
+
+        SOUNDS[selectedSoundID] = s.slice();
+
+        loadSelectedSound();
+
+        showStatus("Sound updated.");
+
+    } catch (e) {
+
+        alert(e.message);
+
+    }
+
+}
+
+/* =========================================================
+   APPLY ALL
+========================================================= */
+
+function applyAllSoundsText() {
+
+    try {
+
+        const values = parseArrayText(
+            $("allSoundsText").value
+        );
+
+        if (
+            !Array.isArray(values) ||
+            values.length !== DEFAULT_SOUNDS.length
+        ) {
+            throw Error("Expected 18 sounds.");
+        }
+
+        values.forEach(validateSound);
+
+        stopAllSounds();
+
+        SOUNDS = values.map(s => s.slice());
+
+        loadSelectedSound();
+
+        showStatus("All sounds updated.");
+
+    } catch (e) {
+
+        alert(e.message);
+
+    }
+
+}
+
+/* =========================================================
+   RESET
+========================================================= */
+
+function clearAdvanced() {
+
+    stopAllSounds();
+
+    SOUNDS[selectedSoundID] =
+        getSound().slice(0, 5);
+
+    loadSelectedSound();
+
+    showStatus("Advanced effects cleared.");
+
+}
+
+function resetSelectedSound() {
+
+    stopAllSounds();
+
+    SOUNDS[selectedSoundID] =
+        DEFAULT_SOUNDS[selectedSoundID].slice();
+
+    loadSelectedSound();
+
+}
+
+function resetAllSounds() {
+
+    if (!confirm("Reset all sounds?"))
+        return;
+
+    stopAllSounds();
+
+    SOUNDS = DEFAULT_SOUNDS.map(s => s.slice());
+
+    loadSelectedSound();
+
+}
+
+/* =========================================================
+   COPY
+========================================================= */
+
+async function copyText(id) {
+
+    const el = $(id);
+
+    try {
+
+        await navigator.clipboard.writeText(el.value);
+
+        showStatus("Copied.");
+
+    } catch (e) {
+
+        el.focus();
+        el.select();
+
+        showStatus("Press Ctrl+C or Cmd+C to copy.");
+
+    }
+
+}
+
+/* =========================================================
+   AUDIO INITIALIZATION
+========================================================= */
+
+function initAudio() {
+
+    if (!audioCtx) {
+
+        const AC =
+            window.AudioContext ||
+            window.webkitAudioContext;
+
+        if (!AC) {
+
+            showStatus("Web Audio not supported.");
+
+            return false;
+
+        }
+
+        audioCtx = new AC();
+
+        masterGain = audioCtx.createGain();
+
+        masterGain.gain.value = soundVolume;
+
+        masterGain.connect(audioCtx.destination);
+
+    }
+
+    if (audioCtx.state === "suspended")
+        audioCtx.resume().catch(console.warn);
+
+    return true;
+
+}
+
+/* =========================================================
+   NOISE BUFFER
+========================================================= */
+
+function getNoiseBuffer() {
+
+    if (noiseBuffer)
+        return noiseBuffer;
+
+    const length =
+        Math.floor(audioCtx.sampleRate * 2);
+
+    noiseBuffer = audioCtx.createBuffer(
+        1,
+        length,
+        audioCtx.sampleRate
+    );
+
+    const data =
+        noiseBuffer.getChannelData(0);
+
+    for (let i = 0; i < length; i++) {
+
+        data[i] = Math.random() * 2 - 1;
+
+    }
+
+    return noiseBuffer;
+
+}
+
+/* =========================================================
+   ENVELOPE SETTINGS
+========================================================= */
+
+function getEnvelope(s) {
+
+    const duration = s[3];
+
+    const attack = Math.min(
+        Math.max(0, s[5] ?? 0),
+        duration * 0.9
+    );
+
+    if (s.length < 11) {
+
+        return {
+            attack,
+            release: 0,
+            sustain: 0.0001,
+            legacy: true
+        };
+
+    }
+
+    const release = Math.min(
+        Math.max(0, s[10]),
+        Math.max(0, duration - attack)
+    );
+
+    return {
+        attack,
+        release,
+        sustain: s[9],
+        legacy: false
+    };
+
+}
+
+/* =========================================================
+   ENVELOPE PREVIEW
+========================================================= */
+
+function drawEnvelope() {
+
+    const canvas = $("envelopeCanvas");
+
+    const ctx = canvas.getContext("2d");
+
+    const s = getSound();
+    const e = getEnvelope(s);
+
+    const w = canvas.width;
+    const h = canvas.height;
+
+    const left = 14;
+    const right = w - 14;
+    const top = 10;
+    const bottom = h - 15;
+
+    const span = right - left;
+
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.strokeStyle = "#444";
+
+    ctx.beginPath();
+    ctx.moveTo(left, bottom);
+    ctx.lineTo(right, bottom);
+    ctx.stroke();
+
+    const x = t =>
+        left + span * t / s[3];
+
+    const y = v =>
+        bottom - (bottom - top) * v;
+
+    ctx.beginPath();
+
+    if (e.legacy) {
+
+        if (e.attack > 0) {
+
+            ctx.moveTo(left, y(0));
+            ctx.lineTo(x(e.attack), y(1));
+
+        } else {
+
+            ctx.moveTo(left, y(1));
+
+        }
+
+        ctx.lineTo(right, y(0));
+
+    } else {
+
+        const sustainEnd =
+            Math.max(e.attack, s[3] - e.release);
+
+        ctx.moveTo(
+            left,
+            y(e.attack > 0 ? 0 : 1)
+        );
+
+        ctx.lineTo(x(e.attack), y(1));
+
+        ctx.lineTo(
+            x(sustainEnd),
+            y(e.sustain)
+        );
+
+        ctx.lineTo(right, y(0));
+
+    }
+
+    ctx.strokeStyle = "#49b87a";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+}
+
+/* =========================================================
+   PLAY ONE SOUND PULSE
+
+   startTime is an AudioContext timestamp.
+
+   This is the core synthesis routine.
+   Repetition calls it multiple times.
+========================================================= */
+
+function playSoundPulse(s, startTime) {
+
+    const [
+        type,
+        startHz,
+        endHz,
+        duration,
+        volume,
+        attack = 0,
+        vibratoRate = 0,
+        vibratoDepth = 0,
+        filterMode = 0
+    ] = s;
+
+    const now = startTime;
+    const end = now + duration;
+
+    const gain = audioCtx.createGain();
+
+    const peak = Math.max(0.0001, volume);
+
+    const e = getEnvelope(s);
+
+    /* -----------------------------------------------------
+       VOLUME ENVELOPE
+    ----------------------------------------------------- */
+
+    if (e.legacy) {
+
+        if (e.attack > 0) {
+
+            gain.gain.setValueAtTime(
+                0.0001,
+                now
+            );
+
+            gain.gain.linearRampToValueAtTime(
+                peak,
+                now + e.attack
+            );
+
+            gain.gain.exponentialRampToValueAtTime(
+                0.0001,
+                end
+            );
+
+        } else {
+
+            gain.gain.setValueAtTime(
+                peak,
+                now
+            );
+
+            gain.gain.exponentialRampToValueAtTime(
+                0.0001,
+                end
+            );
+
+        }
+
+    } else {
+
+        const sustainEnd = end - e.release;
+
+        gain.gain.setValueAtTime(
+            e.attack > 0 ? 0 : peak,
+            now
+        );
+
+        if (e.attack > 0) {
+
+            gain.gain.linearRampToValueAtTime(
+                peak,
+                now + e.attack
+            );
+
+        }
+
+        if (sustainEnd > now + e.attack) {
+
+            gain.gain.linearRampToValueAtTime(
+                peak * e.sustain,
+                sustainEnd
+            );
+
+        }
+
+        if (e.release > 0) {
+
+            gain.gain.linearRampToValueAtTime(
+                0,
+                end
+            );
+
+        } else {
+
+            gain.gain.setValueAtTime(0, end);
+
+        }
+
+    }
+
+    gain.connect(masterGain);
+
+    let source;
+    let filter = null;
+
+    let vibrato = null;
+    let vibratoGain = null;
+
+    /* -----------------------------------------------------
+       FILTERED NOISE
+    ----------------------------------------------------- */
+
+    if (type === 4) {
+
+        source = audioCtx.createBufferSource();
+
+        source.buffer = getNoiseBuffer();
+        source.loop = true;
+
+        // Start each click at a different noise position.
+        // This prevents identical repeated scratch patterns.
+
+        const noiseOffset = Math.random() * 2;
+
+        filter = audioCtx.createBiquadFilter();
+
+        filter.type = [
+            "lowpass",
+            "highpass",
+            "bandpass"
+        ][filterMode] || "lowpass";
+
+        if (filterMode === 2)
+            filter.Q.value = 0.8;
+
+        const nyquist = audioCtx.sampleRate / 2;
+
+        const f1 = Math.max(
+            20,
+            Math.min(startHz, nyquist * 0.95)
+        );
+
+        const f2 = Math.max(
+            20,
+            Math.min(endHz, nyquist * 0.95)
+        );
+
+        filter.frequency.setValueAtTime(
+            f1,
+            now
+        );
+
+        filter.frequency.exponentialRampToValueAtTime(
+            f2,
+            end
+        );
+
+        source.connect(filter);
+        filter.connect(gain);
+
+        source.start(now, noiseOffset);
+
+    }
+
+    /* -----------------------------------------------------
+       OSCILLATOR
+    ----------------------------------------------------- */
+
+    else {
+
+        const waves = [
+            "sine",
+            "square",
+            "triangle",
+            "sawtooth"
+        ];
+
+        source = audioCtx.createOscillator();
+
+        source.type = waves[type];
+
+        source.frequency.setValueAtTime(
+            Math.max(1, startHz),
+            now
+        );
+
+        source.frequency.exponentialRampToValueAtTime(
+            Math.max(1, endHz),
+            end
+        );
+
+        source.connect(gain);
+
+        source.start(now);
+
+    }
+
+    /* -----------------------------------------------------
+       VIBRATO
+    ----------------------------------------------------- */
+
+    if (
+        vibratoRate > 0 &&
+        vibratoDepth > 0
+    ) {
+
+        vibrato = audioCtx.createOscillator();
+
+        vibrato.type = "sine";
+
+        vibrato.frequency.value = vibratoRate;
+
+        vibratoGain = audioCtx.createGain();
+
+        vibratoGain.gain.value = vibratoDepth;
+
+        vibrato.connect(vibratoGain);
+
+        vibratoGain.connect(
+            type === 4
+                ? filter.frequency
+                : source.frequency
+        );
+
+        vibrato.start(now);
+        vibrato.stop(end);
+
+    }
+
+    /* -----------------------------------------------------
+       SOURCE CLEANUP
+    ----------------------------------------------------- */
+
+    activeSources.add(source);
+
+    source.onended = () => {
+
+        activeSources.delete(source);
+
+        try {
+
+            source.disconnect();
+
+            if (filter)
+                filter.disconnect();
+
+            if (vibrato) {
+
+                vibrato.disconnect();
+                vibratoGain.disconnect();
+
+            }
+
+            gain.disconnect();
+
+        } catch (e) {
+
+            // Source already disconnected.
+
+        }
+
+    };
+
+    source.stop(end);
+
+}
+
+/* =========================================================
+   BUILD REPEAT TIMING
+
+   Returns the relative start time of each pulse.
+
+   Each interval is varied independently while
+   remaining positive and increasing.
+
+   The first pulse always begins at zero.
+========================================================= */
+
+function getPulseTimes(s) {
+
+    const count = s[11] ?? 1;
+    const interval = s[12] ?? 0.065;
+    const variation = s[13] ?? 0;
+
+    const times = [0];
+
+    let time = 0;
+
+    for (let i = 1; i < count; i++) {
+
+        const random =
+            (Math.random() * 2 - 1) * variation;
+
+        const gap = Math.max(
+            0.005,
+            interval * (1 + random)
+        );
+
+        time += gap;
+
+        times.push(time);
+
+    }
+
+    return times;
+
+}
+
+/* =========================================================
+   PLAY SOUND
+
+   Schedule all pulses using AudioContext time.
+
+   No setTimeout is required for individual taps.
+   This provides accurate rapid repetition.
+========================================================= */
+
+function playSound(id) {
+
+    if (!initAudio())
+        return 0;
+
+    const s = SOUNDS[id];
+
+    if (!s)
+        return 0;
+
+    const now = audioCtx.currentTime + 0.01;
+
+    const times = getPulseTimes(s);
+
+    for (const offset of times) {
+
+        playSoundPulse(
+            s,
+            now + offset
+        );
+
+    }
+
+    // Total time includes the last pulse's duration.
+
+    return times[times.length - 1] + s[3];
+
+}
+
+/* =========================================================
+   PLAY SELECTED SOUND
+========================================================= */
+
+function playSelectedSound() {
+
+    stopAllSounds();
+
+    const totalDuration =
+        playSound(selectedSoundID);
+
+    if ($("loopCheck").checked && totalDuration > 0) {
+
+        looping = true;
+
+        scheduleLoop(totalDuration);
+
+    }
+
+}
+
+/* =========================================================
+   LOOP PLAYBACK
+
+   Wait until the complete pulse sequence finishes.
+========================================================= */
+
+function scheduleLoop(totalDuration) {
+
+    if (!looping)
+        return;
+
+    loopTimer = setTimeout(() => {
+
+        if (!looping)
+            return;
+
+        const nextDuration =
+            playSound(selectedSoundID);
+
+        scheduleLoop(nextDuration);
+
+    }, totalDuration * 1000 + 120);
+
+}
+
+/* =========================================================
+   STOP ALL SOUNDS
+
+   Also cancels scheduled future pulses.
+========================================================= */
+
+function stopAllSounds() {
+
+    looping = false;
+
+    if (loopTimer !== null) {
+
+        clearTimeout(loopTimer);
+        loopTimer = null;
+
+    }
+
+    for (const source of activeSources) {
+
+        try {
+
+            source.stop();
+
+        } catch (e) {
+
+            // Already stopped.
+
+        }
+
+    }
+
+    activeSources.clear();
+
+}
+
+/* =========================================================
+   INITIALIZE EDITOR
+========================================================= */
+
+function initializeEditor() {
+
+    initializeSoundSelector();
+    initializeParameters();
+
+    /* -----------------------------------------------------
+       WAVEFORM
+    ----------------------------------------------------- */
+
+    $("waveformSelect").addEventListener(
+        "change",
+        () => {
+
+            getSound()[0] =
+                Number($("waveformSelect").value);
+
+            updateArrayText();
+
+        }
+    );
+
+    /* -----------------------------------------------------
+       FILTER
+    ----------------------------------------------------- */
+
+    $("filterSelect").addEventListener(
+        "change",
+        () => {
+
+            expandSound(8);
+
+            getSound()[8] =
+                Number($("filterSelect").value);
+
+            updateArrayText();
+            drawEnvelope();
+
+        }
+    );
+
+    /* -----------------------------------------------------
+       MASTER VOLUME
+    ----------------------------------------------------- */
+
+    $("masterSlider").addEventListener(
+        "input",
+        () => {
+
+            soundVolume =
+                Number($("masterSlider").value);
+
+            $("masterNumber").value = soundVolume;
+
+            if (masterGain)
+                masterGain.gain.value = soundVolume;
+
+        }
+    );
+
+    $("masterNumber").addEventListener(
+        "change",
+        () => {
+
+            soundVolume = Math.max(
+                0,
+                Math.min(
+                    1,
+                    Number($("masterNumber").value) || 0
+                )
+            );
+
+            $("masterSlider").value = soundVolume;
+            $("masterNumber").value = soundVolume;
+
+            if (masterGain)
+                masterGain.gain.value = soundVolume;
+
+        }
+    );
+
+    /* -----------------------------------------------------
+       LOOP CHECKBOX
+    ----------------------------------------------------- */
+
+    $("loopCheck").addEventListener(
+        "change",
+        () => {
+
+            if (!$("loopCheck").checked) {
+
+                looping = false;
+
+                if (loopTimer !== null) {
+
+                    clearTimeout(loopTimer);
+                    loopTimer = null;
+
+                }
+
+            }
+
+        }
+    );
+
+    /* -----------------------------------------------------
+       BUTTONS
+    ----------------------------------------------------- */
+
+    $("playButton").onclick =
+        playSelectedSound;
+
+    $("stopButton").onclick =
+        stopAllSounds;
+
+    $("clearAdvancedButton").onclick =
+        clearAdvanced;
+
+    $("resetSelectedButton").onclick =
+        resetSelectedSound;
+
+    $("resetAllButton").onclick =
+        resetAllSounds;
+
+    $("applySingleButton").onclick =
+        applySingleSoundText;
+
+    $("applyAllButton").onclick =
+        applyAllSoundsText;
+
+    $("copySingleButton").onclick =
+        () => copyText("singleSoundText");
+
+    $("copyAllButton").onclick =
+        () => copyText("allSoundsText");
+
+    loadSelectedSound();
+
+}
+
+initializeEditor();
+
+</script>
+
+</body>
+</html>

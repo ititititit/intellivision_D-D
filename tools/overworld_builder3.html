@@ -1,0 +1,1175 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Organic Overworld Generator</title>
+<style>
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    padding: 18px;
+    background: #171b1a;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+}
+h2 { margin: 0 0 8px; }
+p { font-size: 13px; color: #aab9ac; }
+#layout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 18px;
+}
+canvas {
+    border: 2px solid #555;
+    image-rendering: pixelated;
+    max-width: 100%;
+}
+#controls {
+    width: 270px;
+    padding: 15px;
+    background: #252b28;
+    border: 1px solid #45564a;
+    border-radius: 8px;
+}
+button {
+    padding: 10px 14px;
+    background: #405d50;
+    color: white;
+    border: 1px solid #71917b;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-bottom: 8px;
+}
+label {
+    display: block;
+    margin: 12px 0;
+    font-size: 13px;
+}
+input[type=number] {
+    width: 65px;
+    padding: 5px;
+    background: #151c18;
+    color: white;
+    border: 1px solid #607365;
+}
+#status {
+    margin-top: 15px;
+    line-height: 1.7;
+    font-size: 13px;
+    color: #b7d8c1;
+}
+</style>
+</head>
+<body>
+
+<h2>Organic Overworld Generator</h2>
+<p>Connected mountain ranges, winding rivers, forest barriers and dungeon crossings</p>
+
+<div id="layout">
+
+<canvas id="map" width="800" height="480"></canvas>
+
+<div id="controls">
+
+    <button onclick="generateOverworld()">
+        Generate New Map
+    </button>
+
+    <label>
+        Mountain coverage:
+        <input id="mountainDensity"
+               type="number"
+               value="28"
+               min="10"
+               max="45"> %
+    </label>
+
+    <label>
+        Forest coverage:
+        <input id="forestDensity"
+               type="number"
+               value="15"
+               min="0"
+               max="30"> %
+    </label>
+
+    <label>
+        Dungeon mountains:
+        <input id="dungeonCount"
+               type="number"
+               value="5"
+               min="1"
+               max="8">
+    </label>
+
+    <label>
+        <input id="showGrid"
+               type="checkbox"
+               onchange="drawMap()">
+        Show grid
+    </label>
+
+    <label>
+        <input id="showReachable"
+               type="checkbox"
+               onchange="drawMap()">
+        Show initially reachable grassland
+    </label>
+
+    <div id="status"></div>
+
+</div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   MAP CONSTANTS
+========================================================= */
+
+const W = 20;
+const H = 12;
+const TILE = 40;
+
+const canvas = document.getElementById("map");
+const ctx = canvas.getContext("2d");
+
+ctx.imageSmoothingEnabled = false;
+
+const TYPE = {
+    GRASS: 0,
+    MOUNTAIN: 1,
+    DUNGEON: 2,
+    RIVER: 3,
+    FOREST: 4,
+    HUT: 5,
+    CLOUDY: 6
+};
+
+const COLORS = {
+    2: "#6b4423",
+    3: "#d8b030",
+    4: "#b8b8b8",
+    5: "#202020",
+    7: "#65a84a",
+    8: "#eeeeee",
+    11: "#83b86a",
+    12: "#a0c784",
+    15: "#a0d8e8"
+};
+
+const PALETTES = {
+    RED: "#a03030",
+    BLUE: "#3050a0",
+    GREEN: "#307040",
+    YELLOW: "#b09020",
+    PURPLE: "#703090",
+    GRAY: "#606060",
+    WHITE: "#ffffff",
+    BROWN: "#8a7020"
+};
+
+/* =========================================================
+   SPRITES
+========================================================= */
+
+const SPRITES = {
+
+    20: [
+        0,4,0,0,0,0,0,0,
+        4,4,4,0,4,0,0,0,
+        0,0,0,4,4,4,0,0,
+        0,0,4,4,4,4,4,0,
+        0,4,0,4,4,4,4,4,
+        4,4,4,0,0,0,0,0,
+        0,4,4,4,0,0,4,0,
+        0,0,0,0,0,4,4,4
+    ],
+
+    21: [
+        0,0,0,0,0,0,4,0,
+        0,0,0,4,0,4,4,4,
+        0,0,4,4,4,0,0,0,
+        0,4,4,4,4,4,0,0,
+        4,4,4,4,4,0,4,0,
+        0,0,0,0,0,4,4,4,
+        0,4,0,0,4,4,4,0,
+        4,4,4,0,0,0,0,0
+    ],
+
+    22: [
+        0,15,0,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,0,0,15,0,0,0,0,
+        0,0,0,0,15,0,0,0,
+        0,0,15,0,15,0,0,0,
+        0,15,0,15,0,0,0,0,
+        15,0,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0
+    ],
+
+    23: [
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,15,15,0,
+        15,0,0,0,15,0,0,15,
+        15,0,15,15,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0
+    ],
+
+    25: [
+        0,0,0,11,0,7,0,0,
+        0,11,7,7,7,7,11,0,
+        11,7,7,12,7,11,7,0,
+        0,7,11,7,7,7,7,11,
+        0,0,7,0,11,7,0,0,
+        0,11,7,7,7,7,7,0,
+        11,7,2,7,12,2,11,0,
+        0,0,2,0,0,2,0,0
+    ],
+
+    44: [
+        11,11,11,11,11,11,11,11,
+        11,11,11,11,12,11,11,11,
+        11,11,12,11,11,11,11,11,
+        11,11,11,11,11,11,12,11,
+        11,11,11,11,11,11,12,11,
+        11,12,11,11,11,11,11,11,
+        11,11,11,11,11,11,11,11,
+        11,11,11,12,11,11,11,11
+    ],
+
+    46: [
+        0,0,8,0,0,0,0,0,
+        0,0,0,8,0,0,0,0,
+        0,0,4,0,0,0,0,0,
+        0,2,2,2,2,2,2,0,
+        2,2,2,2,2,2,2,2,
+        0,5,5,5,5,5,5,0,
+        0,5,3,5,5,3,5,0,
+        0,5,5,5,5,3,5,0
+    ],
+
+    48: [
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        15,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0
+    ]
+};
+
+/* =========================================================
+   UTILITIES
+========================================================= */
+
+function rnd(n) {
+    return Math.floor(Math.random() * n);
+}
+
+function range(a, b) {
+    return a + rnd(b - a + 1);
+}
+
+function inside(x, y) {
+    return x >= 0 && x < W &&
+           y >= 0 && y < H;
+}
+
+function distance(a, b) {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+const NEIGHBORS = [
+    [0,-1], [1,0], [0,1], [-1,0],
+    [1,-1], [1,1], [-1,1], [-1,-1]
+];
+
+let map = [];
+let reachable = new Set();
+
+function createMap() {
+
+    map = Array.from(
+        { length: H },
+        () => Array.from(
+            { length: W },
+            () => ({
+                type: TYPE.GRASS,
+                sprite: 44,
+                palette: null
+            })
+        )
+    );
+}
+
+function cell(x, y) {
+    return inside(x, y) ? map[y][x] : null;
+}
+
+function setCell(x, y, type, palette = null) {
+
+    if (!inside(x, y))
+        return false;
+
+    map[y][x] = {
+        type,
+        sprite:
+            type === TYPE.MOUNTAIN ||
+            type === TYPE.DUNGEON ||
+            type === TYPE.CLOUDY
+                ? (rnd(2) ? 20 : 21)
+                : type === TYPE.FOREST ? 25
+                : type === TYPE.RIVER ? 22
+                : type === TYPE.HUT ? 46 : 44,
+        palette
+    };
+
+    return true;
+}
+
+/* =========================================================
+   PROTECTED START / END
+
+   Leave some breathing room around the hut
+   and Cloudy Mountain.
+========================================================= */
+
+function protectedArea(x, y) {
+
+    return (
+        (x <= 1 && Math.abs(y - 6) <= 1) ||
+        (x >= 18 && Math.abs(y - 6) <= 1)
+    );
+}
+
+/* =========================================================
+   MOUNTAIN RANGE
+
+   A wandering backbone with side branches.
+
+   It may join existing mountains, rivers,
+   and forests.
+
+   Mountain ranges tend to run diagonally,
+   but may bend or reverse slightly.
+========================================================= */
+
+function growMountainRange(
+    startX,
+    startY,
+    length,
+    dx,
+    dy
+) {
+
+    let x = startX;
+    let y = startY;
+
+    for (let i = 0; i < length; i++) {
+
+        if (!inside(x, y))
+            break;
+
+        if (!protectedArea(x, y)) {
+
+            const existing = cell(x, y);
+
+            if (
+                existing.type === TYPE.GRASS ||
+                existing.type === TYPE.MOUNTAIN
+            ) {
+                setCell(x, y, TYPE.MOUNTAIN, "BROWN");
+            }
+        }
+
+        // Short lateral spurs give the range
+        // an uneven silhouette.
+        if (Math.random() < 0.32) {
+
+            const sx = x + (rnd(2) ? 1 : -1);
+            const sy = y + (rnd(3) - 1);
+
+            if (
+                inside(sx, sy) &&
+                !protectedArea(sx, sy) &&
+                cell(sx, sy).type === TYPE.GRASS
+            ) {
+                setCell(sx, sy, TYPE.MOUNTAIN, "BROWN");
+            }
+        }
+
+        // Directional persistence.
+        const roll = Math.random();
+
+        if (roll < 0.48) {
+            x += dx;
+            y += dy;
+        }
+        else if (roll < 0.70) {
+            x += dx;
+        }
+        else if (roll < 0.88) {
+            y += dy;
+        }
+        else {
+            x -= dx;
+            y += dy;
+        }
+
+        // Sometimes turn the range.
+        if (Math.random() < 0.13)
+            dx *= -1;
+    }
+}
+
+/* =========================================================
+   GENERATE MOUNTAIN NETWORK
+
+   Several long chains and shorter branches.
+
+   Existing barriers attract new chains,
+   encouraging interconnected terrain.
+========================================================= */
+
+function generateMountains(target) {
+
+    const anchors = [];
+    let attempts = 0;
+
+    function countMountains() {
+
+        let count = 0;
+
+        for (const row of map)
+            for (const c of row)
+                if (c.type === TYPE.MOUNTAIN)
+                    count++;
+
+        return count;
+    }
+
+    while (
+        countMountains() < target &&
+        attempts++ < 100
+    ) {
+
+        let x, y;
+
+        // Some ranges begin near existing ranges.
+        if (
+            anchors.length &&
+            Math.random() < 0.65
+        ) {
+
+            const a = anchors[rnd(anchors.length)];
+
+            x = a.x + range(-4, 4);
+            y = a.y + range(-3, 3);
+
+        } else {
+
+            x = range(2, W - 3);
+            y = rnd(H);
+        }
+
+        x = Math.max(1, Math.min(W - 2, x));
+        y = Math.max(0, Math.min(H - 1, y));
+
+        anchors.push({ x, y });
+
+        growMountainRange(
+            x,
+            y,
+            range(5, 13),
+            rnd(2) ? 1 : -1,
+            rnd(2) ? 1 : -1
+        );
+    }
+}
+
+/* =========================================================
+   WINDING RIVERS
+
+   Rivers are drawn as connected tile paths.
+
+   They are allowed to meet forests and
+   mountains, but never erase them.
+
+   This prototype uses the original river
+   artwork with a simple directional rotation.
+========================================================= */
+
+function generateRiver(startX) {
+
+    let x = startX;
+    let y = 0;
+
+    let previous = null;
+
+    while (y < H) {
+
+        if (inside(x, y) && !protectedArea(x, y)) {
+
+            const existing = cell(x, y);
+
+            if (existing.type === TYPE.GRASS) {
+                setCell(x, y, TYPE.RIVER);
+            }
+        }
+
+        // Mostly flow downward.
+        const roll = Math.random();
+
+        let nx = x;
+        let ny = y + 1;
+
+        if (roll < 0.24) {
+            nx += 1;
+            ny = y;
+        }
+        else if (roll < 0.48) {
+            nx -= 1;
+            ny = y;
+        }
+
+        nx = Math.max(1, Math.min(W - 2, nx));
+
+        // Avoid a horizontal two-tile oscillation.
+        if (
+            previous &&
+            previous.x === nx &&
+            previous.y === ny
+        ) {
+            nx = x;
+            ny = y + 1;
+        }
+
+        previous = { x, y };
+        x = nx;
+        y = ny;
+    }
+}
+
+/* =========================================================
+   FOREST PATCHES
+
+   Forests grow organically.
+
+   Preferentially grow near mountains and
+   rivers so they help connect barriers.
+========================================================= */
+
+function barrierNeighbors(x, y) {
+
+    let count = 0;
+
+    for (const [dx, dy] of NEIGHBORS) {
+
+        const c = cell(x + dx, y + dy);
+
+        if (
+            c &&
+            (
+                c.type === TYPE.MOUNTAIN ||
+                c.type === TYPE.RIVER ||
+                c.type === TYPE.FOREST
+            )
+        ) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+function generateForests(target) {
+
+    let placed = 0;
+    let attempts = 0;
+
+    while (
+        placed < target &&
+        attempts++ < 100
+    ) {
+
+        const candidates = [];
+
+        for (let y = 0; y < H; y++) {
+            for (let x = 1; x < W - 1; x++) {
+
+                if (
+                    cell(x, y).type !== TYPE.GRASS ||
+                    protectedArea(x, y)
+                ) {
+                    continue;
+                }
+
+                const attraction =
+                    barrierNeighbors(x, y);
+
+                if (
+                    attraction > 0 ||
+                    Math.random() < 0.04
+                ) {
+                    candidates.push({
+                        x,
+                        y,
+                        weight: 1 + attraction * 2
+                    });
+                }
+            }
+        }
+
+        if (!candidates.length)
+            break;
+
+        const total = candidates.reduce(
+            (sum, c) => sum + c.weight, 0
+        );
+
+        let pick = Math.random() * total;
+        let seed = candidates[0];
+
+        for (const candidate of candidates) {
+
+            pick -= candidate.weight;
+
+            if (pick <= 0) {
+                seed = candidate;
+                break;
+            }
+        }
+
+        const frontier = [seed];
+        const size = range(4, 12);
+
+        let local = 0;
+
+        while (
+            frontier.length &&
+            local < size &&
+            placed < target
+        ) {
+
+            const index = rnd(frontier.length);
+            const p = frontier.splice(index, 1)[0];
+
+            if (
+                !inside(p.x, p.y) ||
+                protectedArea(p.x, p.y) ||
+                cell(p.x, p.y).type !== TYPE.GRASS
+            ) {
+                continue;
+            }
+
+            setCell(p.x, p.y, TYPE.FOREST);
+
+            placed++;
+            local++;
+
+            for (const [dx, dy] of NEIGHBORS) {
+
+                if (Math.random() < 0.52) {
+                    frontier.push({
+                        x: p.x + dx,
+                        y: p.y + dy
+                    });
+                }
+            }
+        }
+    }
+}
+
+/* =========================================================
+   FIND REGIONS
+
+   Flood fill with barriers blocked.
+
+   Diagonal movement cannot squeeze through
+   a corner formed by two blocked tiles.
+========================================================= */
+
+function isOpen(x, y, allowDungeons = false) {
+
+    const c = cell(x, y);
+
+    return Boolean(
+        c &&
+        (
+            c.type === TYPE.GRASS ||
+            c.type === TYPE.HUT ||
+            (allowDungeons && c.type === TYPE.DUNGEON)
+        )
+    );
+}
+
+function floodFill(sx, sy, allowDungeons = false) {
+
+    const found = new Set();
+
+    if (!isOpen(sx, sy, allowDungeons))
+        return found;
+
+    const queue = [{ x: sx, y: sy }];
+    let head = 0;
+
+    while (head < queue.length) {
+
+        const p = queue[head++];
+        const key = p.x + "," + p.y;
+
+        if (found.has(key))
+            continue;
+
+        found.add(key);
+
+        for (const [dx, dy] of NEIGHBORS) {
+
+            const nx = p.x + dx;
+            const ny = p.y + dy;
+
+            if (!isOpen(nx, ny, allowDungeons))
+                continue;
+
+            if (dx !== 0 && dy !== 0) {
+
+                if (
+                    !isOpen(p.x + dx, p.y, allowDungeons) &&
+                    !isOpen(p.x, p.y + dy, allowDungeons)
+                ) {
+                    continue;
+                }
+            }
+
+            const nk = nx + "," + ny;
+
+            if (!found.has(nk))
+                queue.push({ x: nx, y: ny });
+        }
+    }
+
+    return found;
+}
+
+/* =========================================================
+   IDENTIFY GRASSLAND REGIONS
+========================================================= */
+
+function identifyRegions() {
+
+    const regionMap = Array.from(
+        { length: H },
+        () => Array(W).fill(-1)
+    );
+
+    const regions = [];
+
+    for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+
+            if (
+                !isOpen(x, y) ||
+                regionMap[y][x] !== -1
+            ) {
+                continue;
+            }
+
+            const cells = floodFill(x, y);
+            const id = regions.length;
+
+            for (const key of cells) {
+
+                const [cx, cy] =
+                    key.split(",").map(Number);
+
+                regionMap[cy][cx] = id;
+            }
+
+            regions.push({
+                id,
+                cells: [...cells]
+            });
+        }
+    }
+
+    return { regionMap, regions };
+}
+
+/* =========================================================
+   DUNGEON CROSSING CANDIDATES
+
+   A mountain tile is useful when it touches
+   different accessible regions.
+
+   Prefer these locations over arbitrary
+   mountain tiles.
+========================================================= */
+
+function findDungeonCandidates(regionMap) {
+
+    const candidates = [];
+
+    for (let y = 1; y < H - 1; y++) {
+        for (let x = 1; x < W - 1; x++) {
+
+            if (cell(x, y).type !== TYPE.MOUNTAIN)
+                continue;
+
+            const regions = new Set();
+
+            // Require cardinally adjacent grassland
+            // on both sides of the mountain.
+            for (const [dx, dy] of NEIGHBORS.slice(0, 4)) {
+
+                const nx = x + dx;
+                const ny = y + dy;
+
+                if (
+                    inside(nx, ny) &&
+                    regionMap[ny][nx] >= 0
+                ) {
+                    regions.add(regionMap[ny][nx]);
+                }
+            }
+
+            if (regions.size >= 2) {
+
+                candidates.push({
+                    x,
+                    y,
+                    regions: [...regions]
+                });
+            }
+        }
+    }
+
+    return candidates;
+}
+
+/* =========================================================
+   PLACE DUNGEON MOUNTAINS
+
+   First choose mountains that connect separate
+   regions, then fill remaining slots from
+   mountain locations with open surroundings.
+
+   Keep dungeons spaced apart.
+========================================================= */
+
+function placeDungeons(count) {
+
+    const colors = [
+        "RED",
+        "BLUE",
+        "GREEN",
+        "YELLOW",
+        "PURPLE",
+        "GRAY"
+    ];
+
+    const { regionMap } = identifyRegions();
+
+    const useful = findDungeonCandidates(regionMap);
+
+    // Prefer central and distinct crossings.
+    useful.sort(
+        (a, b) =>
+            b.regions.length - a.regions.length
+    );
+
+    const selected = [];
+
+    function farEnough(x, y) {
+
+        return selected.every(
+            p => distance(p, { x, y }) >= 2.5
+        );
+    }
+
+    function addDungeon(x, y) {
+
+        if (!farEnough(x, y))
+            return false;
+
+        const color =
+            colors[selected.length % colors.length];
+
+        setCell(x, y, TYPE.DUNGEON, color);
+
+        selected.push({ x, y, color });
+
+        return true;
+    }
+
+    for (const p of useful) {
+
+        if (selected.length >= count)
+            break;
+
+        addDungeon(p.x, p.y);
+    }
+
+    // Fallback: mountains next to open land.
+    const other = [];
+
+    for (let y = 1; y < H - 1; y++) {
+        for (let x = 1; x < W - 1; x++) {
+
+            if (cell(x, y).type !== TYPE.MOUNTAIN)
+                continue;
+
+            let openSides = 0;
+
+            for (const [dx, dy] of NEIGHBORS.slice(0, 4)) {
+                if (isOpen(x + dx, y + dy))
+                    openSides++;
+            }
+
+            if (openSides >= 2)
+                other.push({ x, y });
+        }
+    }
+
+    // Shuffle fallback candidates.
+    for (let i = other.length - 1; i > 0; i--) {
+
+        const j = rnd(i + 1);
+
+        [other[i], other[j]] =
+            [other[j], other[i]];
+    }
+
+    for (const p of other) {
+
+        if (selected.length >= count)
+            break;
+
+        addDungeon(p.x, p.y);
+    }
+
+    return selected;
+}
+
+/* =========================================================
+   DRAW PIXEL SPRITE
+========================================================= */
+
+function drawSprite(id, px, py, palette = null) {
+
+    const pixels = SPRITES[id];
+
+    if (!pixels)
+        return;
+
+    const scale = TILE / 8;
+
+    for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+
+            const value = pixels[y * 8 + x];
+
+            if (!value)
+                continue;
+
+            ctx.fillStyle =
+                palette && value === 4
+                ? PALETTES[palette]
+                : COLORS[value];
+
+            ctx.fillRect(
+                px + x * scale,
+                py + y * scale,
+                scale,
+                scale
+            );
+        }
+    }
+}
+
+/* =========================================================
+   DRAW MAP
+========================================================= */
+
+function drawMap() {
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const showReachable =
+        document.getElementById("showReachable").checked;
+
+    for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+
+            const px = x * TILE;
+            const py = y * TILE;
+
+            const c = cell(x, y);
+
+            drawSprite(44, px, py);
+
+            if (c.type !== TYPE.GRASS) {
+                drawSprite(
+                    c.sprite,
+                    px,
+                    py,
+                    c.palette
+                );
+            }
+
+            if (showReachable) {
+
+                const key = x + "," + y;
+
+                if (
+                    c.type === TYPE.GRASS &&
+                    reachable.has(key)
+                ) {
+                    ctx.fillStyle =
+                        "rgba(255,255,120,0.32)";
+
+                    ctx.fillRect(
+                        px, py, TILE, TILE
+                    );
+                }
+            }
+        }
+    }
+
+    if (document.getElementById("showGrid").checked) {
+
+        ctx.strokeStyle = "rgba(0,0,0,0.2)";
+        ctx.lineWidth = 1;
+
+        for (let x = 0; x <= W; x++) {
+
+            ctx.beginPath();
+            ctx.moveTo(x * TILE + 0.5, 0);
+            ctx.lineTo(x * TILE + 0.5, H * TILE);
+            ctx.stroke();
+        }
+
+        for (let y = 0; y <= H; y++) {
+
+            ctx.beginPath();
+            ctx.moveTo(0, y * TILE + 0.5);
+            ctx.lineTo(W * TILE, y * TILE + 0.5);
+            ctx.stroke();
+        }
+    }
+}
+
+/* =========================================================
+   GENERATE OVERWORLD
+========================================================= */
+
+function generateOverworld() {
+
+    const mountainPct = Math.max(
+        10,
+        Math.min(
+            45,
+            Number(
+                document.getElementById(
+                    "mountainDensity"
+                ).value
+            ) || 28
+        )
+    );
+
+    const forestPct = Math.max(
+        0,
+        Math.min(
+            30,
+            Number(
+                document.getElementById(
+                    "forestDensity"
+                ).value
+            ) || 0
+        )
+    );
+
+    const dungeonCount = Math.max(
+        1,
+        Math.min(
+            8,
+            Number(
+                document.getElementById(
+                    "dungeonCount"
+                ).value
+            ) || 5
+        )
+    );
+
+    createMap();
+
+    const total = W * H;
+
+    // 1. Mountain ranges, irregular and branching.
+    generateMountains(
+        Math.round(total * mountainPct / 100)
+    );
+
+    // 2. Two winding rivers.
+    generateRiver(range(4, 7));
+    generateRiver(range(12, 16));
+
+    // 3. Forests connect existing obstacles.
+    generateForests(
+        Math.round(total * forestPct / 100)
+    );
+
+    // 4. Place colored dungeon mountains.
+    const dungeons = placeDungeons(dungeonCount);
+
+    // 5. Fixed start and goal.
+    setCell(0, 6, TYPE.HUT);
+    setCell(W - 1, 6, TYPE.CLOUDY, "WHITE");
+
+    // 6. Identify the initially accessible region.
+    reachable = floodFill(0, 6);
+
+    const { regions } = identifyRegions();
+
+    const openTiles = map.flat().filter(
+        c => c.type === TYPE.GRASS ||
+             c.type === TYPE.HUT
+    ).length;
+
+    const percent = openTiles
+        ? Math.round(
+            reachable.size / openTiles * 100
+        )
+        : 0;
+
+    document.getElementById("status").innerHTML =
+        "<b>Generated map</b>" +
+        "<div>Grassland regions: " +
+            regions.length + "</div>" +
+        "<div>Dungeon mountains: " +
+            dungeons.length + "</div>" +
+        "<div>Initially reachable: " +
+            percent + "% of open terrain</div>" +
+        "<div>Mountain, forest and river barriers " +
+            "can connect naturally.</div>";
+
+    drawMap();
+}
+
+/* =========================================================
+   INITIALIZE
+========================================================= */
+
+generateOverworld();
+
+</script>
+</body>
+</html>

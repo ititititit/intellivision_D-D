@@ -1,0 +1,1196 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mountain and River Generator Test</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    padding: 20px;
+    background: #171b1a;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+}
+
+h2 { margin: 0 0 8px; }
+
+p {
+    font-size: 13px;
+    color: #b8c8bb;
+}
+
+#layout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+canvas {
+    border: 2px solid #555;
+    image-rendering: pixelated;
+    max-width: 100%;
+}
+
+#controls {
+    width: 270px;
+    padding: 15px;
+    background: #252b28;
+    border: 1px solid #45564a;
+    border-radius: 8px;
+}
+
+button {
+    padding: 10px 14px;
+    background: #405d50;
+    color: white;
+    border: 1px solid #71917b;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-bottom: 8px;
+}
+
+button:hover { background: #527661; }
+
+label {
+    display: block;
+    margin: 12px 0;
+    font-size: 13px;
+}
+
+input[type="number"] {
+    width: 70px;
+    padding: 5px;
+    background: #151c18;
+    color: white;
+    border: 1px solid #607365;
+}
+
+#status {
+    margin-top: 15px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #b7d8c1;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Mountain and River Generator Test</h2>
+<p>20 × 12 overworld — branching mountains and rule-based rivers</p>
+
+<div id="layout">
+
+    <canvas id="map" width="800" height="480"></canvas>
+
+    <div id="controls">
+
+        <button onclick="generateMap()">
+            Generate New Map
+        </button>
+
+        <label>
+            Mountain coverage:
+            <input id="mountainDensity"
+                   type="number"
+                   min="0" max="45" value="28"> %
+        </label>
+
+        <label>
+            Number of rivers:
+            <input id="riverCount"
+                   type="number"
+                   min="1" max="8" value="2">
+        </label>
+
+        <label>
+            Maximum river length:
+            <input id="riverLength"
+                   type="number"
+                   min="1" max="100" value="10">
+        </label>
+
+        <label>
+            Mountain crossing penalty:
+            <input id="mountainPenalty"
+                   type="number"
+                   min="10" max="500" value="80">
+        </label>
+
+        <label>
+            <input id="allowCrossing"
+                   type="checkbox" checked>
+            Allow mountain crossings
+        </label>
+
+        <label>
+            <input id="showGrid"
+                   type="checkbox"
+                   onchange="drawMap()">
+            Show grid
+        </label>
+
+        <div id="status"></div>
+
+    </div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   MAP CONSTANTS
+========================================================= */
+
+const W = 20;
+const H = 12;
+const TILE = 40;
+
+const TYPE = {
+    GRASS: 0,
+    MOUNTAIN: 1,
+    RIVER: 3
+};
+
+const COLORS = {
+    4: "#b8b8b8",
+    11: "#83b86a",
+    12: "#a0c784",
+    15: "#a0d8e8"
+};
+
+const PALETTES = {
+    BROWN: "#8a7020"
+};
+
+/* =========================================================
+   SPRITES
+========================================================= */
+
+const SPRITES = {
+
+    20: [
+        0,4,0,0,0,0,0,0,
+        4,4,4,0,4,0,0,0,
+        0,0,0,4,4,4,0,0,
+        0,0,4,4,4,4,4,0,
+        0,4,0,4,4,4,4,4,
+        4,4,4,0,0,0,0,0,
+        0,0,0,0,0,4,4,4
+    ],
+
+    21: [
+        0,0,0,0,0,0,4,0,
+        0,0,0,4,0,4,4,4,
+        0,0,4,4,4,0,0,0,
+        0,4,4,4,4,4,0,0,
+        4,4,4,4,4,0,4,0,
+        0,0,0,0,0,4,4,4,
+        0,4,0,0,4,4,4,0,
+        4,4,4,0,0,0,0,0
+    ],
+
+    22: [
+        0,15,0,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,0,0,15,0,0,0,0,
+        0,0,0,0,15,0,0,0,
+        0,0,15,0,15,0,0,0,
+        0,15,0,15,0,0,0,0,
+        15,0,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0
+    ],
+
+    23: [
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,15,15,0,
+        15,0,0,0,15,0,0,15,
+        15,0,15,15,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0
+    ],
+
+    48: [
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        15,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0
+    ],
+
+    44: [
+        11,11,11,11,11,11,11,11,
+        11,11,11,11,12,11,11,11,
+        11,11,12,11,11,11,11,11,
+        11,11,11,11,11,11,12,11,
+        11,11,11,11,11,11,12,11,
+        11,12,11,11,11,11,11,11,
+        11,11,11,11,11,11,11,11,
+        11,11,11,12,11,11,11,11
+    ]
+};
+
+/* =========================================================
+   MAP DATA
+========================================================= */
+
+let map = [];
+
+function createMap() {
+
+    map = Array.from(
+        { length: H },
+        () => Array.from(
+            { length: W },
+            () => ({
+                type: TYPE.GRASS,
+                sprite: 44,
+                palette: null
+            })
+        )
+    );
+}
+
+function rnd(n) {
+    return Math.floor(Math.random() * n);
+}
+
+function range(a, b) {
+    return a + rnd(b - a + 1);
+}
+
+function inside(x, y) {
+    return x >= 0 && x < W &&
+           y >= 0 && y < H;
+}
+
+function cell(x, y) {
+    return inside(x, y) ? map[y][x] : null;
+}
+
+function setCell(x, y, type, palette = null) {
+
+    if (!inside(x, y))
+        return false;
+
+    map[y][x] = {
+        type,
+        sprite:
+            type === TYPE.MOUNTAIN
+                ? (rnd(2) ? 20 : 21)
+                : 44,
+        palette
+    };
+
+    return true;
+}
+
+/* =========================================================
+   PROTECTED START / END
+========================================================= */
+
+function protectedArea(x, y) {
+    return (
+        (x <= 1 && Math.abs(y - 6) <= 1) ||
+        (x >= 18 && Math.abs(y - 6) <= 1)
+    );
+}
+
+/* =========================================================
+   ORIGINAL MOUNTAIN RANGE GENERATOR
+========================================================= */
+
+function growMountainRange(
+    startX,
+    startY,
+    length,
+    dx,
+    dy
+) {
+
+    let x = startX;
+    let y = startY;
+
+    for (let i = 0; i < length; i++) {
+
+        if (!inside(x, y))
+            break;
+
+        if (!protectedArea(x, y)) {
+
+            const existing = cell(x, y);
+
+            if (
+                existing.type === TYPE.GRASS ||
+                existing.type === TYPE.MOUNTAIN
+            ) {
+                setCell(x, y, TYPE.MOUNTAIN, "BROWN");
+            }
+        }
+
+        if (Math.random() < 0.32) {
+
+            const sx = x + (rnd(2) ? 1 : -1);
+            const sy = y + (rnd(3) - 1);
+
+            if (
+                inside(sx, sy) &&
+                !protectedArea(sx, sy) &&
+                cell(sx, sy).type === TYPE.GRASS
+            ) {
+                setCell(sx, sy, TYPE.MOUNTAIN, "BROWN");
+            }
+        }
+
+        const roll = Math.random();
+
+        if (roll < 0.48) {
+            x += dx;
+            y += dy;
+        }
+        else if (roll < 0.70) {
+            x += dx;
+        }
+        else if (roll < 0.88) {
+            y += dy;
+        }
+        else {
+            x -= dx;
+            y += dy;
+        }
+
+        if (Math.random() < 0.13)
+            dx *= -1;
+    }
+}
+
+/* =========================================================
+   GENERATE MOUNTAINS
+========================================================= */
+
+function generateMountains(target) {
+
+    const anchors = [];
+    let attempts = 0;
+
+    function countMountains() {
+
+        let count = 0;
+
+        for (const row of map)
+            for (const c of row)
+                if (c.type === TYPE.MOUNTAIN)
+                    count++;
+
+        return count;
+    }
+
+    while (
+        countMountains() < target &&
+        attempts++ < 100
+    ) {
+
+        let x, y;
+
+        if (
+            anchors.length &&
+            Math.random() < 0.65
+        ) {
+            const a = anchors[rnd(anchors.length)];
+
+            x = a.x + range(-4, 4);
+            y = a.y + range(-3, 3);
+        }
+        else {
+            x = range(2, W - 3);
+            y = rnd(H);
+        }
+
+        x = Math.max(1, Math.min(W - 2, x));
+        y = Math.max(0, Math.min(H - 1, y));
+
+        anchors.push({ x, y });
+
+        growMountainRange(
+            x,
+            y,
+            range(5, 13),
+            rnd(2) ? 1 : -1,
+            rnd(2) ? 1 : -1
+        );
+    }
+}
+
+/* =========================================================
+   ORIGINAL RIVER NEIGHBOR RULES
+========================================================= */
+
+const DIR = [
+    { name:"N", dx:0, dy:-1 },
+    { name:"E", dx:1, dy:0 },
+    { name:"S", dx:0, dy:1 },
+    { name:"W", dx:-1, dy:0 }
+];
+
+const FIXED_RULES = [
+
+    {
+        from:[22,0,false,false],
+        neighbors:{
+            N:[[48,0,false,false],[23,2,true,false]],
+            E:[],
+            S:[[23,0,false,false],[48,2,true,false]],
+            W:[]
+        }
+    },
+    {
+        from:[22,1,false,false],
+        neighbors:{
+            N:[],
+            E:[[48,1,false,false],[23,3,true,false]],
+            S:[],
+            W:[[23,1,false,false],[48,3,true,false]]
+        }
+    },
+    {
+        from:[22,2,false,false],
+        neighbors:{
+            N:[[23,2,false,false],[48,0,true,false]],
+            E:[],
+            S:[[48,2,false,false],[23,0,true,false]],
+            W:[]
+        }
+    },
+    {
+        from:[22,3,false,false],
+        neighbors:{
+            N:[],
+            E:[[23,3,false,false],[48,1,true,false]],
+            S:[],
+            W:[[48,3,false,false],[23,1,true,false]]
+        }
+    },
+
+    {
+        from:[23,0,false,false],
+        neighbors:{
+            N:[[22,0,false,false],[48,0,false,false]],
+            E:[[48,0,false,false]],
+            S:[],
+            W:[]
+        }
+    },
+    {
+        from:[23,1,false,false],
+        neighbors:{
+            N:[],
+            E:[[22,1,false,false],[48,1,false,false]],
+            S:[[48,1,false,false]],
+            W:[]
+        }
+    },
+    {
+        from:[23,2,false,false],
+        neighbors:{
+            N:[],
+            E:[],
+            S:[[22,2,false,false],[48,2,false,false]],
+            W:[[48,2,false,false]]
+        }
+    },
+    {
+        from:[23,3,false,false],
+        neighbors:{
+            N:[[48,3,false,false]],
+            E:[],
+            S:[],
+            W:[[22,3,false,false],[48,3,false,false]]
+        }
+    },
+    {
+        from:[23,2,true,false],
+        neighbors:{
+            N:[],
+            E:[[48,2,true,false]],
+            S:[[22,0,false,false]],
+            W:[]
+        }
+    },
+    {
+        from:[23,3,true,false],
+        neighbors:{
+            N:[],
+            E:[],
+            S:[[48,3,true,false]],
+            W:[[22,1,false,false]]
+        }
+    },
+    {
+        from:[23,0,true,false],
+        neighbors:{
+            N:[[22,2,false,false]],
+            E:[],
+            S:[],
+            W:[[48,0,true,false]]
+        }
+    },
+    {
+        from:[23,1,true,false],
+        neighbors:{
+            N:[[48,1,true,false]],
+            E:[[22,3,false,false]],
+            S:[],
+            W:[]
+        }
+    },
+
+    {
+        from:[48,0,false,false],
+        neighbors:{
+            N:[],
+            E:[],
+            S:[[22,0,false,false],[23,0,false,false]],
+            W:[[23,0,false,false]]
+        }
+    },
+    {
+        from:[48,1,false,false],
+        neighbors:{
+            N:[[23,1,false,false]],
+            E:[],
+            S:[],
+            W:[[22,1,false,false],[23,1,false,false]]
+        }
+    },
+    {
+        from:[48,2,false,false],
+        neighbors:{
+            N:[[22,2,false,false],[23,2,false,false]],
+            E:[[23,2,false,false]],
+            S:[],
+            W:[]
+        }
+    },
+    {
+        from:[48,3,false,false],
+        neighbors:{
+            N:[],
+            E:[[22,3,false,false],[23,3,false,false]],
+            S:[[23,3,false,false]],
+            W:[]
+        }
+    },
+    {
+        from:[48,2,true,false],
+        neighbors:{
+            N:[[22,0,false,false]],
+            E:[],
+            S:[],
+            W:[[23,2,true,false]]
+        }
+    },
+    {
+        from:[48,3,true,false],
+        neighbors:{
+            N:[[23,3,true,false]],
+            E:[[22,1,false,false]],
+            S:[],
+            W:[]
+        }
+    },
+    {
+        from:[48,0,true,false],
+        neighbors:{
+            N:[],
+            E:[[23,0,true,false]],
+            S:[[22,2,false,false]],
+            W:[]
+        }
+    },
+    {
+        from:[48,1,true,false],
+        neighbors:{
+            N:[],
+            E:[],
+            S:[[23,1,true,false]],
+            W:[[22,3,false,false]]
+        }
+    }
+];
+
+/* =========================================================
+   RIVER ORIENTATION HELPERS
+========================================================= */
+
+function makeCell(data) {
+    return {
+        sprite:data[0],
+        rotation:data[1],
+        flipH:data[2],
+        flipV:data[3]
+    };
+}
+
+function copyCell(c) {
+    return {
+        sprite:c.sprite,
+        rotation:c.rotation,
+        flipH:!!c.flipH,
+        flipV:!!c.flipV
+    };
+}
+
+function cellKey(c) {
+    return [
+        c.sprite,
+        c.rotation,
+        Number(c.flipH),
+        Number(c.flipV)
+    ].join(":");
+}
+
+function rotateCell(c,turns) {
+    return {
+        ...copyCell(c),
+        rotation:(c.rotation+turns)%4
+    };
+}
+
+const neighborRules = new Map();
+
+function getRuleSlots(c) {
+
+    const key = cellKey(c);
+
+    if (!neighborRules.has(key))
+        neighborRules.set(key,[[],[],[],[]]);
+
+    return neighborRules.get(key);
+}
+
+function addRule(from,direction,to) {
+
+    const list = getRuleSlots(from)[direction];
+    const key = cellKey(to);
+
+    if (!list.some(c=>cellKey(c)===key))
+        list.push(copyCell(to));
+}
+
+function buildRules() {
+
+    neighborRules.clear();
+
+    for (const rule of FIXED_RULES) {
+
+        const source = makeCell(rule.from);
+
+        for (let direction=0;direction<4;direction++) {
+
+            const name = DIR[direction].name;
+
+            for (const data of rule.neighbors[name]) {
+
+                const target = makeCell(data);
+
+                for (let turns=0;turns<4;turns++) {
+
+                    const from = rotateCell(source,turns);
+                    const to = rotateCell(target,turns);
+                    const d = (direction+turns)%4;
+
+                    addRule(from,d,to);
+                    addRule(to,(d+2)%4,from);
+                }
+            }
+        }
+    }
+}
+
+/* =========================================================
+   SELF-CONTAINED RIVER GENERATOR
+========================================================= */
+
+const RIVER_SETTINGS = {
+    beamWidth:32,
+    mountainPenalty:80,
+    grassPenalty:1,
+    northPenalty:7,
+    horizontalPenalty:2,
+    southPenalty:0,
+    turnPenalty:0.5,
+    allowMountainCrossing:true
+};
+
+function riverInside(map,x,y) {
+    return (
+        y>=0 && y<map.length &&
+        x>=0 && x<map[0].length
+    );
+}
+
+function riverTerrainCost(map,x,y,settings) {
+
+    if (!riverInside(map,x,y))
+        return Infinity;
+
+    const tile = map[y][x];
+
+    if (!tile || tile.type===TYPE.GRASS)
+        return settings.grassPenalty;
+
+    if (
+        tile.type===TYPE.MOUNTAIN &&
+        settings.allowMountainCrossing
+    ) {
+        return settings.mountainPenalty;
+    }
+
+    return Infinity;
+}
+
+function riverNextOptions(map,state,settings) {
+
+    const slots = neighborRules.get(
+        cellKey(state.cell)
+    );
+
+    if (!slots)
+        return [];
+
+    const options = [];
+
+    for (let d=0;d<4;d++) {
+
+        if (d===state.entry)
+            continue;
+
+        const nx=state.x+DIR[d].dx;
+        const ny=state.y+DIR[d].dy;
+        const key=nx+","+ny;
+
+        if (state.visited.has(key))
+            continue;
+
+        const terrainCost=riverTerrainCost(
+            map,nx,ny,settings
+        );
+
+        if (!Number.isFinite(terrainCost))
+            continue;
+
+        let directionCost;
+
+        switch(d) {
+            case 0:
+                directionCost=settings.northPenalty;
+                break;
+            case 1:
+            case 3:
+                directionCost=settings.horizontalPenalty;
+                break;
+            default:
+                directionCost=settings.southPenalty;
+        }
+
+        if (
+            state.direction!==null &&
+            state.direction!==d
+        ) {
+            directionCost+=settings.turnPenalty;
+        }
+
+        for (const next of slots[d]) {
+            options.push({
+                x:nx,
+                y:ny,
+                cell:copyCell(next),
+                entry:(d+2)%4,
+                direction:d,
+                cost:terrainCost+directionCost
+            });
+        }
+    }
+
+    return options;
+}
+
+function generateSingleRiver(
+    map,startX,maxLength,settings=RIVER_SETTINGS
+) {
+
+    const emptyResult={
+        length:0,
+        mountainCrossings:0,
+        path:[]
+    };
+
+    if (!riverInside(map,startX,0))
+        return emptyResult;
+
+    const initialCost=riverTerrainCost(
+        map,startX,0,settings
+    );
+
+    if (!Number.isFinite(initialCost))
+        return emptyResult;
+
+    const starts=FIXED_RULES
+        .map(rule=>makeCell(rule.from))
+        .filter(c=>{
+            const slots=neighborRules.get(cellKey(c));
+            return slots && slots[2].length>0;
+        });
+
+    if (!starts.length)
+        return emptyResult;
+
+    const initialKey=startX+",0";
+
+    let beam=starts.map(c=>({
+        x:startX,
+        y:0,
+        cell:copyCell(c),
+        entry:0,
+        direction:null,
+        cost:initialCost,
+        crossings:
+            map[0][startX] &&
+            map[0][startX].type===TYPE.MOUNTAIN
+                ? 1 : 0,
+        visited:new Set([initialKey]),
+        path:[{
+            x:startX,
+            y:0,
+            cell:copyCell(c)
+        }]
+    }));
+
+    let best=beam[0];
+
+    for (let step=1;step<maxLength;step++) {
+
+        const candidates=[];
+
+        for (const state of beam) {
+
+            const options=riverNextOptions(
+                map,state,settings
+            );
+
+            for (const next of options) {
+
+                const visited=new Set(state.visited);
+                visited.add(next.x+","+next.y);
+
+                const isMountain=
+                    map[next.y][next.x] &&
+                    map[next.y][next.x].type===
+                        TYPE.MOUNTAIN;
+
+                candidates.push({
+                    x:next.x,
+                    y:next.y,
+                    cell:next.cell,
+                    entry:next.entry,
+                    direction:next.direction,
+                    cost:state.cost+next.cost,
+                    crossings:
+                        state.crossings+
+                        (isMountain?1:0),
+                    visited,
+                    path:[
+                        ...state.path,
+                        {
+                            x:next.x,
+                            y:next.y,
+                            cell:next.cell
+                        }
+                    ]
+                });
+            }
+        }
+
+        if (!candidates.length)
+            break;
+
+        candidates.sort((a,b)=>a.cost-b.cost);
+
+        beam=candidates.slice(
+            0,settings.beamWidth
+        );
+
+        best=beam[0];
+    }
+
+    for (const p of best.path) {
+        map[p.y][p.x]={
+            type:TYPE.RIVER,
+            sprite:p.cell.sprite,
+            rotation:p.cell.rotation,
+            flipH:p.cell.flipH,
+            flipV:p.cell.flipV,
+            palette:null
+        };
+    }
+
+    return {
+        length:best.path.length,
+        mountainCrossings:best.crossings,
+        path:best.path
+    };
+}
+
+function generateRivers(
+    map,count=2,maxLength=10,options={}
+) {
+
+    const settings={
+        ...RIVER_SETTINGS,
+        ...options
+    };
+
+    const width=map[0].length;
+    const results=[];
+
+    for (let i=0;i<count;i++) {
+
+        const startX=Math.max(
+            0,
+            Math.min(
+                width-1,
+                Math.floor(
+                    (i+0.5)*width/count
+                )
+            )
+        );
+
+        results.push(
+            generateSingleRiver(
+                map,startX,maxLength,settings
+            )
+        );
+    }
+
+    return {
+        rivers:results,
+        totalTiles:results.reduce(
+            (sum,r)=>sum+r.length,0
+        ),
+        mountainCrossings:results.reduce(
+            (sum,r)=>sum+r.mountainCrossings,0
+        )
+    };
+}
+
+/* =========================================================
+   RENDERING
+========================================================= */
+
+const canvas=document.getElementById("map");
+const ctx=canvas.getContext("2d");
+
+ctx.imageSmoothingEnabled=false;
+
+function transformPixel(
+    x,y,rotation,flipH=false,flipV=false
+) {
+
+    if (flipH)x=7-x;
+    if (flipV)y=7-y;
+
+    switch(rotation&3) {
+        case 1:return [7-y,x];
+        case 2:return [7-x,7-y];
+        case 3:return [y,7-x];
+        default:return [x,y];
+    }
+}
+
+function drawSprite(id,px,py,palette=null,rotation=0,
+                    flipH=false,flipV=false) {
+
+    const pixels=SPRITES[id];
+
+    if (!pixels)return;
+
+    const scale=TILE/8;
+
+    for (let y=0;y<8;y++) {
+        for (let x=0;x<8;x++) {
+
+            const value=pixels[y*8+x];
+            if (!value)continue;
+
+            const [rx,ry]=transformPixel(
+                x,y,rotation,flipH,flipV
+            );
+
+            ctx.fillStyle=
+                palette && value===4
+                ? PALETTES[palette]
+                : COLORS[value];
+
+            ctx.fillRect(
+                px+rx*scale,
+                py+ry*scale,
+                scale,scale
+            );
+        }
+    }
+}
+
+function drawMap() {
+
+    ctx.clearRect(
+        0,0,canvas.width,canvas.height
+    );
+
+    for (let y=0;y<H;y++) {
+        for (let x=0;x<W;x++) {
+
+            const px=x*TILE;
+            const py=y*TILE;
+            const c=cell(x,y);
+
+            drawSprite(44,px,py);
+
+            if (c.type!==TYPE.GRASS) {
+                drawSprite(
+                    c.sprite,
+                    px,py,
+                    c.palette,
+                    c.rotation||0,
+                    c.flipH||false,
+                    c.flipV||false
+                );
+            }
+        }
+    }
+
+    if (document.getElementById("showGrid").checked) {
+
+        ctx.strokeStyle="rgba(0,0,0,0.2)";
+        ctx.lineWidth=1;
+
+        for (let x=0;x<=W;x++) {
+            ctx.beginPath();
+            ctx.moveTo(x*TILE+0.5,0);
+            ctx.lineTo(x*TILE+0.5,H*TILE);
+            ctx.stroke();
+        }
+
+        for (let y=0;y<=H;y++) {
+            ctx.beginPath();
+            ctx.moveTo(0,y*TILE+0.5);
+            ctx.lineTo(W*TILE,y*TILE+0.5);
+            ctx.stroke();
+        }
+    }
+}
+
+/* =========================================================
+   TEST CONTROLLER
+========================================================= */
+
+function generateMap() {
+
+    const mountainPct=Math.max(
+        0,
+        Math.min(
+            45,
+            Number(
+                document.getElementById(
+                    "mountainDensity"
+                ).value
+            )||0
+        )
+    );
+
+    const riverCount=Math.max(
+        1,
+        Math.min(
+            8,
+            Number(
+                document.getElementById(
+                    "riverCount"
+                ).value
+            )||2
+        )
+    );
+
+    const riverLength=Math.max(
+        1,
+        Math.min(
+            100,
+            Number(
+                document.getElementById(
+                    "riverLength"
+                ).value
+            )||10
+        )
+    );
+
+    const mountainPenalty=Math.max(
+        10,
+        Number(
+            document.getElementById(
+                "mountainPenalty"
+            ).value
+        )||80
+    );
+
+    const allowMountainCrossing=
+        document.getElementById(
+            "allowCrossing"
+        ).checked;
+
+    createMap();
+
+    generateMountains(
+        Math.round(W*H*mountainPct/100)
+    );
+
+    const result=generateRivers(
+        map,
+        riverCount,
+        riverLength,
+        {
+            mountainPenalty,
+            allowMountainCrossing
+        }
+    );
+
+    document.getElementById("status").innerHTML=
+        "<b>Generated map</b>"+
+        "<div>River tiles: "+
+        result.totalTiles+"</div>"+
+        "<div>Mountain crossings: "+
+        result.mountainCrossings+"</div>"+
+        "<div>River lengths: "+
+        result.rivers.map(r=>r.length).join(", ")+
+        "</div>";
+
+    drawMap();
+}
+
+/* =========================================================
+   INITIALIZE
+========================================================= */
+
+buildRules();
+generateMap();
+
+</script>
+</body>
+</html>

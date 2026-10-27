@@ -1,0 +1,1394 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>River Placement Editor</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: #171b1a;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+}
+
+h2 { margin: 0 0 8px; }
+
+#layout {
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+#mapPanel { flex: 0 0 auto; }
+
+#map {
+    display: block;
+    background: #83b86a;
+    border: 2px solid #555;
+    image-rendering: pixelated;
+    cursor: crosshair;
+    max-width: 100%;
+    touch-action: none;
+}
+
+#sidebar {
+    width: 300px;
+    background: #252b28;
+    border: 1px solid #454c46;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.section { margin-bottom: 18px; }
+
+.sectionTitle {
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #a0d8e8;
+}
+
+#palette {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.spriteButton {
+    background: #303b32;
+    border: 2px solid #4d5c50;
+    border-radius: 5px;
+    color: white;
+    padding: 8px;
+    cursor: pointer;
+}
+
+.spriteButton.selected {
+    border-color: #a0d8e8;
+    background: #405d50;
+}
+
+.spriteButton canvas {
+    display: block;
+    width: 80px;
+    height: 80px;
+    margin: auto;
+    image-rendering: pixelated;
+}
+
+.spriteButton span {
+    display: block;
+    margin-top: 5px;
+    font-size: 12px;
+}
+
+button {
+    background: #39483e;
+    color: #eee;
+    border: 1px solid #607365;
+    border-radius: 4px;
+    padding: 8px 10px;
+    cursor: pointer;
+}
+
+button:hover { background: #4a6252; }
+
+button.active {
+    background: #426f79;
+    border-color: #a0d8e8;
+}
+
+.buttonRow {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+#preview {
+    width: 128px;
+    height: 128px;
+    display: block;
+    margin: 10px auto;
+    image-rendering: pixelated;
+    border: 1px solid #657267;
+}
+
+#status, #generationStatus {
+    font-size: 13px;
+    color: #c0d0c0;
+    line-height: 1.7;
+}
+
+textarea {
+    width: 100%;
+    height: 110px;
+    margin-top: 8px;
+    background: #111;
+    color: #b8e6bd;
+    font-family: monospace;
+    font-size: 11px;
+    resize: vertical;
+}
+
+label { font-size: 13px; }
+
+#neighborSprite {
+    width: 100%;
+    padding: 6px;
+    margin-top: 6px;
+    background: #19231d;
+    color: #ddd;
+    border: 1px solid #607365;
+}
+
+#neighborList {
+    max-height: 300px;
+    overflow: auto;
+    white-space: pre-wrap;
+    font: 12px monospace;
+    line-height: 1.5;
+    margin-top: 8px;
+    padding: 8px;
+    background: #151c18;
+    border: 1px solid #45564a;
+}
+</style>
+</head>
+
+<body>
+
+<div id="layout">
+
+    <div id="mapPanel">
+        <h2>River Placement Editor</h2>
+        <canvas id="map" width="800" height="480"></canvas>
+        <p id="status">
+            Select a river sprite and paint on the map.
+        </p>
+    </div>
+
+    <div id="sidebar">
+
+        <div class="section">
+            <div class="sectionTitle">River Palette</div>
+            <div id="palette"></div>
+        </div>
+
+        <div class="section">
+            <div class="sectionTitle">Rotation</div>
+            <div class="buttonRow">
+                <button onclick="rotateBrush(-1)">↶ 90°</button>
+                <button onclick="rotateBrush(1)">↷ 90°</button>
+                <button onclick="setRotation(0)">Reset</button>
+            </div>
+            <p id="rotationLabel">Rotation: 0°</p>
+        </div>
+
+        <div class="section">
+            <div class="sectionTitle">Flip</div>
+            <div class="buttonRow">
+                <button id="flipHButton" onclick="flipBrushH()">
+                    ↔ Flip Horizontal
+                </button>
+                <button id="flipVButton" onclick="flipBrushV()">
+                    ↕ Flip Vertical
+                </button>
+            </div>
+            <p id="flipLabel">No flips</p>
+        </div>
+
+        <div class="section">
+            <div class="sectionTitle">Brush Preview</div>
+            <canvas id="preview" width="128" height="128"></canvas>
+        </div>
+
+        <div class="section">
+            <div class="sectionTitle">Tools</div>
+            <div class="buttonRow">
+                <button id="paintButton" class="active"
+                    onclick="setTool('paint')">Paint</button>
+                <button id="eraseButton"
+                    onclick="setTool('erase')">Erase</button>
+                <button onclick="clearMap()">Clear</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="sectionTitle">Display</div>
+            <label>
+                <input type="checkbox" id="showGrid" checked>
+                Show tile grid
+            </label>
+        </div>
+
+        <div class="section">
+            <div class="sectionTitle">River Generation</div>
+
+            <div class="buttonRow">
+                <button onclick="generateNeighbors()">
+                    Generate Neighbors
+                </button>
+                <button onclick="generateTwoRivers()">
+                    Generate Two Rivers
+                </button>
+            </div>
+
+            <p id="generationStatus">
+                Draw examples, then generate neighbor rules.
+            </p>
+
+            <label for="neighborSprite">
+                Neighbor rules for:
+            </label>
+
+            <select id="neighborSprite" onchange="showNeighbors()">
+                <option value="22">River 1 (22)</option>
+                <option value="23">River 2 (23)</option>
+                <option value="48">River 3 (48)</option>
+                <option value="49">River 4 (49)</option>
+            </select>
+
+            <div id="neighborList"></div>
+        </div>
+
+        <div class="section">
+            <div class="sectionTitle">Map Data</div>
+            <div class="buttonRow">
+                <button onclick="exportMap()">Export</button>
+                <button onclick="importMap()">Import</button>
+            </div>
+            <textarea id="mapData"
+                placeholder="Exported JSON appears here"></textarea>
+        </div>
+
+        <div class="section">
+            <div class="sectionTitle">Controls</div>
+            <div style="font-size:13px;line-height:1.7">
+                Left mouse: Paint<br>
+                Right mouse: Erase<br>
+                R: Rotate clockwise<br>
+                Shift+R: Rotate counterclockwise<br>
+                H: Flip horizontal<br>
+                V: Flip vertical<br>
+                E: Eraser<br>
+                P: Paint
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
+const MAP_W = 20;
+const MAP_H = 12;
+const TILE_SIZE = 40;
+
+const RIVER_IDS = [22, 23, 48, 49];
+
+const SPRITE_COLORS = {
+    11: "#83b86a",
+    12: "#a0c784",
+    13: "#245c98",
+    14: "#408ac0",
+    15: "#a0d8e8"
+};
+
+/* =========================================================
+   ORIGINAL RIVER SPRITES
+========================================================= */
+
+const RIVER_SPRITES = {
+
+    22: [
+        0,15,0,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,0,0,15,0,0,0,0,
+        0,0,0,0,15,0,0,0,
+        0,0,15,0,15,0,0,0,
+        0,15,0,15,0,0,0,0,
+        15,0,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0
+    ],
+
+    23: [
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,15,15,0,
+        15,0,0,0,15,0,0,15,
+        15,0,15,15,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0
+    ],
+
+    48: [
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        15,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0
+    ],
+
+    49: [
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,15,15,0,
+        15,0,0,0,15,0,0,15,
+        15,0,15,15,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0
+    ]
+};
+
+/* =========================================================
+   ORIGINAL GRASS SPRITE
+========================================================= */
+
+const GRASS = [
+    11,11,11,11,11,11,11,11,
+    11,11,11,11,12,11,11,11,
+    11,11,12,11,11,11,11,11,
+    11,11,11,11,11,11,12,11,
+    11,11,11,11,11,11,11,11,
+    11,12,11,11,11,11,11,11,
+    11,11,11,11,11,11,11,11,
+    11,11,11,12,11,11,11,11
+];
+
+/* =========================================================
+   MAP AND EDITOR STATE
+========================================================= */
+
+function emptyMap() {
+    return Array.from(
+        { length: MAP_H },
+        () => Array(MAP_W).fill(null)
+    );
+}
+
+let mapData = emptyMap();
+
+let selectedSprite = 22;
+let selectedRotation = 0;
+let selectedFlipH = false;
+let selectedFlipV = false;
+let selectedTool = "paint";
+
+let mouseDown = false;
+let rightMouseDown = false;
+let hoverX = -1;
+let hoverY = -1;
+
+const canvas = document.getElementById("map");
+const ctx = canvas.getContext("2d");
+
+const preview = document.getElementById("preview");
+const previewCtx = preview.getContext("2d");
+
+ctx.imageSmoothingEnabled = false;
+previewCtx.imageSmoothingEnabled = false;
+
+/* =========================================================
+   ROTATE / FLIP PIXEL
+
+   Flips are applied before rotation.
+========================================================= */
+
+function transformPixel(
+    x, y, rotation,
+    flipH = false,
+    flipV = false
+) {
+    if (flipH) x = 7 - x;
+    if (flipV) y = 7 - y;
+
+    switch (rotation & 3) {
+        case 1: return [7 - y, x];
+        case 2: return [7 - x, 7 - y];
+        case 3: return [y, 7 - x];
+        default: return [x, y];
+    }
+}
+
+/* =========================================================
+   DRAW PIXEL SPRITE
+========================================================= */
+
+function drawPixelSprite(
+    context, sprite, rotation,
+    x, y, size,
+    flipH = false,
+    flipV = false
+) {
+    const pixelSize = size / 8;
+
+    for (let py = 0; py < 8; py++) {
+        for (let px = 0; px < 8; px++) {
+
+            const colorIndex = sprite[py * 8 + px];
+
+            if (colorIndex === 0)
+                continue;
+
+            const [rx, ry] = transformPixel(
+                px, py, rotation, flipH, flipV
+            );
+
+            context.fillStyle =
+                SPRITE_COLORS[colorIndex];
+
+            context.fillRect(
+                x + rx * pixelSize,
+                y + ry * pixelSize,
+                pixelSize,
+                pixelSize
+            );
+        }
+    }
+}
+
+/* =========================================================
+   DRAW TILE
+========================================================= */
+
+function drawTile(context, cell, x, y, size) {
+
+    drawPixelSprite(
+        context, GRASS, 0, x, y, size
+    );
+
+    if (cell !== null) {
+        drawPixelSprite(
+            context,
+            RIVER_SPRITES[cell.sprite],
+            cell.rotation,
+            x, y, size,
+            cell.flipH ?? false,
+            cell.flipV ?? false
+        );
+    }
+}
+
+/* =========================================================
+   DRAW MAP
+========================================================= */
+
+function drawMap() {
+
+    ctx.clearRect(
+        0, 0, canvas.width, canvas.height
+    );
+
+    for (let y = 0; y < MAP_H; y++) {
+        for (let x = 0; x < MAP_W; x++) {
+
+            drawTile(
+                ctx,
+                mapData[y][x],
+                x * TILE_SIZE,
+                y * TILE_SIZE,
+                TILE_SIZE
+            );
+        }
+    }
+
+    if (document.getElementById("showGrid").checked) {
+
+        ctx.strokeStyle = "rgba(0,0,0,0.22)";
+        ctx.lineWidth = 1;
+
+        for (let x = 0; x <= MAP_W; x++) {
+            ctx.beginPath();
+            ctx.moveTo(x * TILE_SIZE + 0.5, 0);
+            ctx.lineTo(x * TILE_SIZE + 0.5, MAP_H * TILE_SIZE);
+            ctx.stroke();
+        }
+
+        for (let y = 0; y <= MAP_H; y++) {
+            ctx.beginPath();
+            ctx.moveTo(0, y * TILE_SIZE + 0.5);
+            ctx.lineTo(MAP_W * TILE_SIZE, y * TILE_SIZE + 0.5);
+            ctx.stroke();
+        }
+    }
+
+    if (
+        hoverX >= 0 && hoverX < MAP_W &&
+        hoverY >= 0 && hoverY < MAP_H
+    ) {
+        const x = hoverX * TILE_SIZE;
+        const y = hoverY * TILE_SIZE;
+
+        ctx.fillStyle = "rgba(255,255,255,0.12)";
+        ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(
+            x + 1, y + 1,
+            TILE_SIZE - 2, TILE_SIZE - 2
+        );
+    }
+}
+
+/* =========================================================
+   BRUSH PREVIEW
+========================================================= */
+
+function drawPreview() {
+
+    previewCtx.clearRect(
+        0, 0, preview.width, preview.height
+    );
+
+    drawTile(
+        previewCtx,
+        {
+            sprite: selectedSprite,
+            rotation: selectedRotation,
+            flipH: selectedFlipH,
+            flipV: selectedFlipV
+        },
+        0, 0, 128
+    );
+
+    document.getElementById("rotationLabel")
+        .textContent =
+        "Rotation: " + selectedRotation * 90 + "°";
+}
+
+/* =========================================================
+   PALETTE
+========================================================= */
+
+function createPalette() {
+
+    const palette = document.getElementById("palette");
+    palette.innerHTML = "";
+
+    for (const id of RIVER_IDS) {
+
+        const button = document.createElement("button");
+        button.className = "spriteButton";
+
+        if (id === selectedSprite)
+            button.classList.add("selected");
+
+        const icon = document.createElement("canvas");
+        icon.width = 80;
+        icon.height = 80;
+
+        drawTile(
+            icon.getContext("2d"),
+            { sprite: id, rotation: 0 },
+            0, 0, 80
+        );
+
+        const label = document.createElement("span");
+
+        label.textContent =
+            "River " + (RIVER_IDS.indexOf(id) + 1) +
+            " (ID " + id + ")";
+
+        button.appendChild(icon);
+        button.appendChild(label);
+
+        button.addEventListener("click", () => {
+
+            selectedSprite = id;
+            setTool("paint");
+
+            createPalette();
+            drawPreview();
+            drawMap();
+        });
+
+        palette.appendChild(button);
+    }
+}
+
+/* =========================================================
+   ROTATION AND FLIP CONTROLS
+========================================================= */
+
+function setRotation(rotation) {
+
+    selectedRotation = (rotation + 4) % 4;
+
+    drawPreview();
+    drawMap();
+}
+
+function rotateBrush(direction) {
+    setRotation(selectedRotation + direction);
+}
+
+function flipBrushH() {
+
+    selectedFlipH = !selectedFlipH;
+
+    updateFlipControls();
+    drawPreview();
+    drawMap();
+}
+
+function flipBrushV() {
+
+    selectedFlipV = !selectedFlipV;
+
+    updateFlipControls();
+    drawPreview();
+    drawMap();
+}
+
+function updateFlipControls() {
+
+    document.getElementById("flipHButton")
+        .classList.toggle("active", selectedFlipH);
+
+    document.getElementById("flipVButton")
+        .classList.toggle("active", selectedFlipV);
+
+    document.getElementById("flipLabel")
+        .textContent =
+        "Horizontal: " + (selectedFlipH ? "Yes" : "No") +
+        " | Vertical: " + (selectedFlipV ? "Yes" : "No");
+}
+
+/* =========================================================
+   TOOL SELECTION
+========================================================= */
+
+function setTool(tool) {
+
+    selectedTool = tool;
+
+    document.getElementById("paintButton")
+        .classList.toggle("active", tool === "paint");
+
+    document.getElementById("eraseButton")
+        .classList.toggle("active", tool === "erase");
+}
+
+/* =========================================================
+   PAINT CELL
+========================================================= */
+
+function inMap(x, y) {
+    return (
+        x >= 0 && x < MAP_W &&
+        y >= 0 && y < MAP_H
+    );
+}
+
+function paintCell(x, y, erase = false) {
+
+    if (!inMap(x, y))
+        return;
+
+    if (erase || selectedTool === "erase") {
+
+        mapData[y][x] = null;
+
+    } else {
+
+        mapData[y][x] = {
+            sprite: selectedSprite,
+            rotation: selectedRotation,
+            flipH: selectedFlipH,
+            flipV: selectedFlipV
+        };
+    }
+
+    drawMap();
+}
+
+/* =========================================================
+   MOUSE POSITION
+========================================================= */
+
+function getMouseCell(event) {
+
+    const rect = canvas.getBoundingClientRect();
+
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    return [
+        Math.floor(
+            (event.clientX - rect.left) *
+            scaleX / TILE_SIZE
+        ),
+        Math.floor(
+            (event.clientY - rect.top) *
+            scaleY / TILE_SIZE
+        )
+    ];
+}
+
+/* =========================================================
+   MOUSE INPUT
+========================================================= */
+
+canvas.addEventListener("pointerdown", event => {
+
+    event.preventDefault();
+
+    canvas.setPointerCapture(event.pointerId);
+
+    mouseDown = true;
+    rightMouseDown = event.button === 2;
+
+    const [x, y] = getMouseCell(event);
+
+    hoverX = x;
+    hoverY = y;
+
+    paintCell(x, y, rightMouseDown);
+    updateStatus(x, y);
+});
+
+canvas.addEventListener("pointermove", event => {
+
+    const [x, y] = getMouseCell(event);
+
+    hoverX = x;
+    hoverY = y;
+
+    if (mouseDown) {
+        paintCell(x, y, rightMouseDown);
+    } else {
+        drawMap();
+    }
+
+    updateStatus(x, y);
+});
+
+canvas.addEventListener("pointerup", () => {
+    mouseDown = false;
+    rightMouseDown = false;
+});
+
+canvas.addEventListener("pointercancel", () => {
+    mouseDown = false;
+    rightMouseDown = false;
+});
+
+canvas.addEventListener("pointerleave", () => {
+
+    if (!mouseDown) {
+        hoverX = -1;
+        hoverY = -1;
+        drawMap();
+    }
+});
+
+canvas.addEventListener("contextmenu", event => {
+    event.preventDefault();
+});
+
+/* =========================================================
+   STATUS
+========================================================= */
+
+function updateStatus(x, y) {
+
+    if (!inMap(x, y))
+        return;
+
+    const cell = mapData[y][x];
+
+    let description = "Grass";
+
+    if (cell) {
+        description =
+            "River " + cell.sprite +
+            ", rotation " + cell.rotation * 90 + "°" +
+            (cell.flipH ? ", H flip" : "") +
+            (cell.flipV ? ", V flip" : "");
+    }
+
+    document.getElementById("status").textContent =
+        "Cell (" + x + ", " + y + ") — " +
+        description;
+}
+
+/* =========================================================
+   CLEAR MAP
+========================================================= */
+
+function clearMap() {
+
+    if (!confirm("Clear all river tiles?"))
+        return;
+
+    mapData = emptyMap();
+    drawMap();
+}
+
+/* =========================================================
+   EXPORT MAP
+========================================================= */
+
+function exportMap() {
+
+    document.getElementById("mapData").value =
+        JSON.stringify({
+            width: MAP_W,
+            height: MAP_H,
+            cells: mapData
+        }, null, 2);
+}
+
+/* =========================================================
+   IMPORT MAP
+========================================================= */
+
+function importMap() {
+
+    try {
+
+        const input = JSON.parse(
+            document.getElementById("mapData").value
+        );
+
+        if (
+            input.width !== MAP_W ||
+            input.height !== MAP_H ||
+            !Array.isArray(input.cells) ||
+            input.cells.length !== MAP_H
+        ) {
+            throw new Error("Invalid map dimensions");
+        }
+
+        for (const row of input.cells) {
+
+            if (
+                !Array.isArray(row) ||
+                row.length !== MAP_W
+            ) {
+                throw new Error("Invalid map row");
+            }
+
+            for (const cell of row) {
+
+                if (cell === null)
+                    continue;
+
+                if (
+                    !cell ||
+                    !RIVER_IDS.includes(cell.sprite) ||
+                    !Number.isInteger(cell.rotation) ||
+                    cell.rotation < 0 ||
+                    cell.rotation > 3 ||
+                    (cell.flipH !== undefined &&
+                     typeof cell.flipH !== "boolean") ||
+                    (cell.flipV !== undefined &&
+                     typeof cell.flipV !== "boolean")
+                ) {
+                    throw new Error("Invalid river cell");
+                }
+            }
+        }
+
+        mapData = input.cells.map(row =>
+            row.map(cell =>
+                cell === null ? null : {
+                    sprite: cell.sprite,
+                    rotation: cell.rotation,
+                    flipH: cell.flipH ?? false,
+                    flipV: cell.flipV ?? false
+                }
+            )
+        );
+
+        drawMap();
+
+    } catch (error) {
+        alert("Import failed: " + error.message);
+    }
+}
+
+/* =========================================================
+   LEARN NEIGHBORS FROM MANUAL MAP
+
+   N = 0, E = 1, S = 2, W = 3
+
+   Each adjacent pair creates a rule.
+
+   Rotate each learned pair through all four
+   orientations.
+
+   Also learn the reverse relationship.
+========================================================= */
+
+const DIRECTIONS = [
+    { name: "N", dx: 0, dy: -1 },
+    { name: "E", dx: 1, dy: 0 },
+    { name: "S", dx: 0, dy: 1 },
+    { name: "W", dx: -1, dy: 0 }
+];
+
+/*
+   Key:
+       sprite:rotation:flipH:flipV
+
+   Value:
+       Four arrays of valid neighboring tiles.
+*/
+
+let neighborRules = new Map();
+let learnedPairs = 0;
+
+/* =========================================================
+   ORIENTATION IDENTIFIER
+========================================================= */
+
+function variantKey(cell) {
+
+    return [
+        cell.sprite,
+        cell.rotation,
+        Number(Boolean(cell.flipH)),
+        Number(Boolean(cell.flipV))
+    ].join(":");
+}
+
+/* =========================================================
+   COPY ORIENTATION
+========================================================= */
+
+function copyOrientation(cell) {
+
+    return {
+        sprite: cell.sprite,
+        rotation: cell.rotation,
+        flipH: Boolean(cell.flipH),
+        flipV: Boolean(cell.flipV)
+    };
+}
+
+/* =========================================================
+   ROTATE ORIENTATION
+
+   A global clockwise map rotation is equivalent
+   to adding clockwise rotation to every tile.
+
+   Existing flip states remain unchanged.
+========================================================= */
+
+function rotatedOrientation(cell, turns) {
+
+    return {
+        ...copyOrientation(cell),
+        rotation: (cell.rotation + turns) % 4
+    };
+}
+
+/* =========================================================
+   GET OR CREATE NEIGHBOR RULE SLOTS
+========================================================= */
+
+function getRuleSlots(cell) {
+
+    const key = variantKey(cell);
+
+    if (!neighborRules.has(key)) {
+        neighborRules.set(
+            key,
+            [[], [], [], []]
+        );
+    }
+
+    return neighborRules.get(key);
+}
+
+/* =========================================================
+   ADD NEIGHBOR RULE
+
+   Prevent duplicate entries.
+========================================================= */
+
+function addNeighborRule(from, direction, to) {
+
+    const list = getRuleSlots(from)[direction];
+    const key = variantKey(to);
+
+    if (!list.some(
+        item => variantKey(item) === key
+    )) {
+        list.push(copyOrientation(to));
+    }
+}
+
+/* =========================================================
+   LEARN A NEIGHBOR PAIR
+
+   For each rotation:
+       Rotate source tile
+       Rotate destination tile
+       Rotate relative direction
+
+   Also record the reverse relationship.
+========================================================= */
+
+function learnPair(from, direction, to) {
+
+    for (let turns = 0; turns < 4; turns++) {
+
+        const a = rotatedOrientation(from, turns);
+        const b = rotatedOrientation(to, turns);
+
+        const d = (direction + turns) % 4;
+
+        addNeighborRule(a, d, b);
+
+        addNeighborRule(
+            b,
+            (d + 2) % 4,
+            a
+        );
+    }
+}
+
+/* =========================================================
+   GENERATE NEIGHBORS
+
+   Analyze manually placed adjacent tiles.
+
+   Only examine east and south neighbors,
+   so each physical pair is counted once.
+
+   The original map is not modified.
+========================================================= */
+
+function generateNeighbors() {
+
+    neighborRules = new Map();
+    learnedPairs = 0;
+
+    for (let y = 0; y < MAP_H; y++) {
+        for (let x = 0; x < MAP_W; x++) {
+
+            const from = mapData[y][x];
+
+            if (!from)
+                continue;
+
+            for (const d of [1, 2]) {
+
+                const nx = x + DIRECTIONS[d].dx;
+                const ny = y + DIRECTIONS[d].dy;
+
+                if (!inMap(nx, ny))
+                    continue;
+
+                const to = mapData[ny][nx];
+
+                if (!to)
+                    continue;
+
+                learnPair(from, d, to);
+                learnedPairs++;
+            }
+        }
+    }
+
+    document.getElementById("generationStatus")
+        .textContent =
+        learnedPairs +
+        " painted neighbor pairs learned; " +
+        neighborRules.size +
+        " oriented source variants.";
+
+    showNeighbors();
+}
+
+/* =========================================================
+   DISPLAY LEARNED NEIGHBORS
+========================================================= */
+
+function showNeighbors() {
+
+    const id = Number(
+        document.getElementById("neighborSprite").value
+    );
+
+    const target =
+        document.getElementById("neighborList");
+
+    if (!neighborRules.size) {
+
+        target.textContent =
+            "Paint connected river tiles, then click " +
+            "Generate Neighbors.";
+
+        return;
+    }
+
+    const lines = [];
+
+    for (const [key, slots] of neighborRules) {
+
+        const parts = key.split(":");
+
+        if (Number(parts[0]) !== id)
+            continue;
+
+        const rotation = Number(parts[1]) * 90;
+
+        lines.push(
+            "BASE: " + parts[0] +
+            " @" + rotation + "°" +
+            (parts[2] === "1" ? " H" : "") +
+            (parts[3] === "1" ? " V" : "")
+        );
+
+        DIRECTIONS.forEach((direction, d) => {
+
+            const neighbors = slots[d].map(v =>
+                v.sprite +
+                "@" + (v.rotation * 90) + "°" +
+                (v.flipH ? " H" : "") +
+                (v.flipV ? " V" : "")
+            );
+
+            lines.push(
+                "  " + direction.name + ": " +
+                (neighbors.length
+                    ? neighbors.join(", ")
+                    : "none")
+            );
+        });
+
+        lines.push("");
+    }
+
+    target.textContent = lines.length
+        ? lines.join("\n")
+        : "No learned rules for this river sprite.";
+}
+
+/* =========================================================
+   GENERATE TWO RIVERS
+
+   Uses the previously learned neighbor rules.
+
+   Each river:
+       Starts at the top
+       Uses a learned orientation
+       Grows up to 10 tiles
+       Avoids occupied cells
+       Avoids immediate backtracking
+
+   Southward movement is preferred.
+========================================================= */
+
+function generateTwoRivers() {
+
+    if (!neighborRules.size) {
+
+        document.getElementById("generationStatus")
+            .textContent =
+            "First paint example river connections " +
+            "and click Generate Neighbors.";
+
+        return;
+    }
+
+    // Clear painted examples but preserve learned rules.
+    mapData = emptyMap();
+
+    const sourceKeys = [...neighborRules.keys()];
+    const lengths = [];
+
+    const starts = [
+        Math.floor(MAP_W * 0.25),
+        Math.floor(MAP_W * 0.75)
+    ];
+
+    for (const startX of starts) {
+
+        let x = startX;
+        let y = 0;
+
+        // Direction from which we entered the tile.
+        let entry = 0;
+        let count = 0;
+
+        // Prefer starting orientations with a south exit.
+        const startKeys = sourceKeys.filter(key =>
+            neighborRules.get(key)[2].length > 0
+        );
+
+        const pool = startKeys.length
+            ? startKeys
+            : sourceKeys;
+
+        const start = pool[
+            Math.floor(Math.random() * pool.length)
+        ];
+
+        const [sprite, rotation, h, v] =
+            start.split(":").map(Number);
+
+        let current = {
+            sprite,
+            rotation,
+            flipH: Boolean(h),
+            flipV: Boolean(v)
+        };
+
+        while (
+            count < 10 &&
+            inMap(x, y) &&
+            !mapData[y][x]
+        ) {
+
+            mapData[y][x] =
+                copyOrientation(current);
+
+            count++;
+
+            const slots = neighborRules.get(
+                variantKey(current)
+            );
+
+            if (!slots)
+                break;
+
+            const options = [];
+
+            for (let d = 0; d < 4; d++) {
+
+                // Do not immediately reverse direction.
+                if (d === entry)
+                    continue;
+
+                const nx = x + DIRECTIONS[d].dx;
+                const ny = y + DIRECTIONS[d].dy;
+
+                if (!inMap(nx, ny))
+                    continue;
+
+                if (mapData[ny][nx])
+                    continue;
+
+                for (const next of slots[d]) {
+
+                    // Favor southward river growth.
+                    const weight =
+                        d === 2 ? 5 :
+                        d === 0 ? 1 : 3;
+
+                    for (let k = 0; k < weight; k++) {
+
+                        options.push({
+                            nx,
+                            ny,
+                            next,
+                            entry: (d + 2) % 4
+                        });
+                    }
+                }
+            }
+
+            if (!options.length)
+                break;
+
+            const pick = options[
+                Math.floor(
+                    Math.random() * options.length
+                )
+            ];
+
+            x = pick.nx;
+            y = pick.ny;
+
+            current = copyOrientation(pick.next);
+            entry = pick.entry;
+        }
+
+        lengths.push(count);
+    }
+
+    document.getElementById("generationStatus")
+        .textContent =
+        "Generated two rivers: " +
+        lengths.join(" and ") +
+        " tiles (from " +
+        learnedPairs +
+        " example pairs).";
+
+    drawMap();
+}
+
+/* =========================================================
+   KEYBOARD SHORTCUTS
+========================================================= */
+
+document.addEventListener("keydown", event => {
+
+    if (
+        event.target.tagName === "TEXTAREA" ||
+        event.target.tagName === "INPUT" ||
+        event.target.tagName === "SELECT"
+    ) {
+        return;
+    }
+
+    switch (event.key.toLowerCase()) {
+
+        case "r":
+            rotateBrush(event.shiftKey ? -1 : 1);
+            break;
+
+        case "h":
+            flipBrushH();
+            break;
+
+        case "v":
+            flipBrushV();
+            break;
+
+        case "e":
+            setTool("erase");
+            break;
+
+        case "p":
+            setTool("paint");
+            break;
+    }
+});
+
+/* =========================================================
+   INITIALIZE
+========================================================= */
+
+document.getElementById("showGrid")
+    .addEventListener("change", drawMap);
+
+createPalette();
+updateFlipControls();
+drawPreview();
+drawMap();
+showNeighbors();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,831 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Numeric Dungeon Test</title>
+
+<style>
+html, body {
+    margin: 0;
+    height: 100%;
+    background: #111;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#wrap {
+    text-align: center;
+}
+
+canvas {
+    border: 2px solid #777;
+    width: 800px;
+    height: 480px;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+#info {
+    margin-top: 10px;
+    color: #aaa;
+}
+</style>
+</head>
+
+<body>
+
+<div id="wrap">
+    <canvas id="game" width="160" height="96"></canvas>
+    <div id="info">WASD = move</div>
+</div>
+
+<script src="sound.js"></script>
+<script src="dungeon_definitions.js"></script>
+
+<script>
+"use strict";
+
+/* =========================================================
+   CANVAS
+========================================================= */
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+ctx.imageSmoothingEnabled = false;
+
+
+/* =========================================================
+   DECODE BLOCK
+
+   Bits 0-5 = block ID
+   Bits 6-7 = orientation
+========================================================= */
+
+function decodeBlock(value) {
+    return {
+        block: value & 63,
+        orientation: (value >> 6) & 3
+    };
+}
+
+
+/* =========================================================
+   DECODE ROOM
+
+   Bits 0-3 = room ID
+   Bits 4-5 = orientation
+========================================================= */
+
+function decodeRoom(value) {
+    return {
+        room: value & 15,
+        orientation: (value >> 4) & 3
+    };
+}
+
+
+/* =========================================================
+   ROTATE COORDINATE
+
+   Rotates an 8x8 pixel coordinate clockwise.
+========================================================= */
+
+function rotateXY(x, y, orientation) {
+
+    switch (orientation) {
+
+        case E:
+            return { x: 7 - y, y: x };
+
+        case S:
+            return { x: 7 - x, y: 7 - y };
+
+        case W:
+            return { x: y, y: 7 - x };
+
+        default:
+            return { x: x, y: y };
+    }
+}
+
+
+/* =========================================================
+   GET PIXEL FROM BLOCK
+
+   The block itself is 8x8 pixels.
+
+   Reverse-map the destination pixel to the original
+   block pixel according to its orientation.
+========================================================= */
+
+function getBlockPixel(blockID, orientation, x, y) {
+
+    let sx = x;
+    let sy = y;
+
+    switch (orientation) {
+
+        case E:
+            sx = y;
+            sy = 7 - x;
+            break;
+
+        case S:
+            sx = 7 - x;
+            sy = 7 - y;
+            break;
+
+        case W:
+            sx = 7 - y;
+            sy = x;
+            break;
+    }
+
+    return BLOCKS[blockID][sy * BLOCK_PIXELS + sx];
+}
+
+
+/* =========================================================
+   DRAW ONE BLOCK
+
+   value = encoded block value
+   bx/by = viewport block coordinates
+========================================================= */
+
+function drawBlock(value, bx, by) {
+
+    const decoded = decodeBlock(value);
+
+    const px = bx * BLOCK_PIXELS;
+    const py = by * BLOCK_PIXELS;
+
+    for (let y = 0; y < BLOCK_PIXELS; y++) {
+
+        for (let x = 0; x < BLOCK_PIXELS; x++) {
+
+            const colorID = getBlockPixel(
+                decoded.block,
+                decoded.orientation,
+                x,
+                y
+            );
+
+            ctx.fillStyle = COLORS[colorID];
+
+            ctx.fillRect(
+                px + x,
+                py + y,
+                1,
+                1
+            );
+        }
+    }
+}
+
+
+/* =========================================================
+   GET WORLD BLOCK
+
+   World coordinate
+       -> dungeon room
+       -> local room coordinate
+       -> reverse room rotation
+       -> room block
+       -> combined block orientation
+
+   Rooms are 9x9 blocks.
+========================================================= */
+
+function getWorldBlock(wx, wy) {
+
+    if (
+        wx < 0 ||
+        wy < 0 ||
+        wx >= WORLD_W ||
+        wy >= WORLD_H
+    ) {
+        return 0;
+    }
+
+    const dungeonX = Math.floor(wx / ROOM_BLOCKS);
+    const dungeonY = Math.floor(wy / ROOM_BLOCKS);
+
+    const dungeonValue =
+        DUNGEON[dungeonY][dungeonX];
+
+    const roomInfo = decodeRoom(dungeonValue);
+
+    const localX = wx % ROOM_BLOCKS;
+    const localY = wy % ROOM_BLOCKS;
+
+    let sx = localX;
+    let sy = localY;
+
+    switch (roomInfo.orientation) {
+
+        case E:
+            sx = localY;
+            sy = ROOM_BLOCKS - 1 - localX;
+            break;
+
+        case S:
+            sx = ROOM_BLOCKS - 1 - localX;
+            sy = ROOM_BLOCKS - 1 - localY;
+            break;
+
+        case W:
+            sx = ROOM_BLOCKS - 1 - localY;
+            sy = localX;
+            break;
+    }
+
+    const room = ROOMS[roomInfo.room];
+
+    const blockValue =
+        room[sy * ROOM_BLOCKS + sx];
+
+    const blockInfo = decodeBlock(blockValue);
+
+    const finalOrientation =
+        (blockInfo.orientation + roomInfo.orientation) & 3;
+
+    return (
+        blockInfo.block |
+        (finalOrientation << 6)
+    );
+}
+
+
+/* =========================================================
+   CAMERA
+========================================================= */
+
+let cameraX = 0;
+let cameraY = 0;
+
+function clampCamera() {
+
+    cameraX = Math.max(
+        0,
+        Math.min(WORLD_W - VIEW_W, cameraX)
+    );
+
+    cameraY = Math.max(
+        0,
+        Math.min(WORLD_H - VIEW_H, cameraY)
+    );
+}
+
+
+/* =========================================================
+   DRAW SPRITE
+
+   Sprite coordinates are in screen blocks.
+
+   Each sprite is 8x8 pixels.
+   Color 0 is transparent.
+========================================================= */
+
+function drawSprite(spriteID, bx, by) {
+
+    const sprite = SPRITES[spriteID];
+
+    if (!sprite) {
+        return;
+    }
+
+    const px = bx * BLOCK_PIXELS;
+    const py = by * BLOCK_PIXELS;
+
+    for (let y = 0; y < BLOCK_PIXELS; y++) {
+
+        for (let x = 0; x < BLOCK_PIXELS; x++) {
+
+            const color = sprite[y * BLOCK_PIXELS + x];
+
+            if (color === 0) {
+                continue;
+            }
+
+            ctx.fillStyle = SPRITE_COLORS[color];
+
+            ctx.fillRect(
+                px + x,
+                py + y,
+                1,
+                1
+            );
+        }
+    }
+}
+
+
+/* =========================================================
+   PLAYER STATE
+========================================================= */
+
+const player = {
+
+    x: 4,
+    y: 4,
+
+    direction: N,
+    mode: PLAYER_MODE.NORMAL,
+
+    inventory: {
+        axe: false,
+        boat: false,
+        key: false,
+        crown: false,
+        arrow: false,
+        sword: false,
+        bow: false
+    }
+};
+
+
+/* =========================================================
+   DRAW PLAYER
+========================================================= */
+
+function drawPlayer() {
+
+    const sx = player.x - cameraX;
+    const sy = player.y - cameraY;
+
+    if (
+        sx < 0 ||
+        sy < 0 ||
+        sx >= VIEW_W ||
+        sy >= VIEW_H
+    ) {
+        return;
+    }
+
+    const frames = PLAYER_ANIMATIONS[player.mode];
+
+    const spriteID = frames[animationFrame & 1];
+
+    drawSprite(spriteID, sx, sy);
+}
+
+
+/* =========================================================
+   INVENTORY DISPLAY
+
+   Draws collected item sprites across the top-left
+   of the screen.
+========================================================= */
+
+function drawInventory() {
+
+    const slotSize = 12;
+    const iconSize = 8;
+    const padding = 2;
+
+    const x0 = 2;
+    const y0 = 2;
+
+    const width =
+        INVENTORY_ICONS.length * slotSize + padding * 2;
+
+    const height = slotSize + padding * 2;
+
+    ctx.save();
+
+    // Outer shadow
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(
+        x0 + 1,
+        y0 + 1,
+        width,
+        height
+    );
+
+    // Main panel
+    ctx.fillStyle = "#29221a";
+    ctx.fillRect(
+        x0,
+        y0,
+        width,
+        height
+    );
+
+    // Gold border
+    ctx.strokeStyle = "#b08a40";
+    ctx.lineWidth = 1;
+
+    ctx.strokeRect(
+        x0 + 0.5,
+        y0 + 0.5,
+        width - 1,
+        height - 1
+    );
+
+    for (let i = 0; i < INVENTORY_ICONS.length; i++) {
+
+        const [item, spriteID] = INVENTORY_ICONS[i];
+
+        const x = x0 + padding + i * slotSize;
+        const y = y0 + padding;
+
+        const owned = player.inventory[item];
+
+        const equipped =
+            (item === "sword" &&
+             player.mode === PLAYER_MODE.SWORD) ||
+            (item === "bow" &&
+             player.mode === PLAYER_MODE.BOW);
+
+        // Slot background
+        ctx.fillStyle = owned
+            ? "#302c24"
+            : "#171717";
+
+        ctx.fillRect(
+            x,
+            y,
+            slotSize - 1,
+            slotSize - 1
+        );
+
+        // Slot border
+        ctx.strokeStyle = equipped
+            ? "#ffe070"
+            : owned
+                ? "#8c7445"
+                : "#444444";
+
+        ctx.strokeRect(
+            x + 0.5,
+            y + 0.5,
+            slotSize - 2,
+            slotSize - 2
+        );
+
+        // Draw collected item
+        if (owned) {
+
+            const iconX =
+                x + Math.floor((slotSize - iconSize) / 2);
+
+            const iconY =
+                y + Math.floor((slotSize - iconSize) / 2);
+
+            drawSprite(
+                spriteID,
+                iconX / BLOCK_PIXELS,
+                iconY / BLOCK_PIXELS
+            );
+        }
+    }
+
+    ctx.restore();
+}
+
+
+/* =========================================================
+   DRAW VIEW
+
+   Drawing order:
+       1. Terrain
+       2. Dungeon objects
+       3. Player
+       4. Inventory
+========================================================= */
+
+function draw() {
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    // Draw terrain
+    for (let y = 0; y < VIEW_H; y++) {
+
+        for (let x = 0; x < VIEW_W; x++) {
+
+            const wx = cameraX + x;
+            const wy = cameraY + y;
+
+            const block = getWorldBlock(wx, wy);
+
+            drawBlock(block, x, y);
+        }
+    }
+
+    // Draw dungeon objects
+    for (const obj of DUNGEON_OBJECTS) {
+
+        const worldX = obj[0];
+        const worldY = obj[1];
+        const objectID = obj[2];
+
+        const screenX = worldX - cameraX;
+        const screenY = worldY - cameraY;
+
+        if (
+            screenX < 0 ||
+            screenY < 0 ||
+            screenX >= VIEW_W ||
+            screenY >= VIEW_H
+        ) {
+            continue;
+        }
+
+        const def = OBJECT_DEFS[objectID];
+
+        if (!def) {
+            continue;
+        }
+
+        let spriteID = def[0];
+
+        if (
+            def[1] !== -1 &&
+            animationFrame
+        ) {
+            spriteID = def[1];
+        }
+
+        drawSprite(
+            spriteID,
+            screenX,
+            screenY
+        );
+    }
+
+    drawPlayer();
+    drawInventory();
+}
+
+
+/* =========================================================
+   ANIMATION
+
+   Alternates between animation frames.
+========================================================= */
+
+let animationFrame = 0;
+
+setInterval(function() {
+
+    animationFrame ^= 1;
+
+    draw();
+
+}, 350);
+
+
+/* =========================================================
+   MONSTER PROXIMITY SOUND
+
+   Monster sounds are audible within 10 blocks.
+
+   Volume increases as the player gets closer.
+========================================================= */
+
+function updateMonsterSounds() {
+
+    if (!audioCtx || !soundEnabled) {
+        return;
+    }
+
+    for (const obj of DUNGEON_OBJECTS) {
+
+        const [x, y, type] = obj;
+
+        const soundID = MONSTER_SOUNDS[type];
+
+        if (soundID === undefined) {
+            continue;
+        }
+
+        const dx = x - player.x;
+        const dy = y - player.y;
+
+        const distance = Math.hypot(dx, dy);
+
+        if (distance > MONSTER_SOUND_RANGE) {
+            continue;
+        }
+
+        const proximity =
+            1 - distance / MONSTER_SOUND_RANGE;
+
+        const volume = proximity * proximity;
+
+        if (volume <= 0) {
+            continue;
+        }
+
+        playSound(soundID, volume);
+    }
+}
+
+
+/* =========================================================
+   PLAYER ITEM PICKUP
+
+   Checks objects at the player's current position.
+
+   Collectible objects:
+       Sword
+       Bow
+       Quiver
+       Key
+       Axe
+       Crown
+       Boat
+
+   Other objects are ignored.
+========================================================= */
+
+function checkPlayerPickup() {
+
+    for (
+        let i = DUNGEON_OBJECTS.length - 1;
+        i >= 0;
+        i--
+    ) {
+
+        const obj = DUNGEON_OBJECTS[i];
+
+        const [x, y, type] = obj;
+
+        if (
+            x !== player.x ||
+            y !== player.y
+        ) {
+            continue;
+        }
+
+        switch (type) {
+
+            case OBJECT.SWORD:
+                player.mode = PLAYER_MODE.SWORD;
+                player.inventory.sword = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+
+            case OBJECT.BOW:
+                player.mode = PLAYER_MODE.BOW;
+                player.inventory.bow = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+
+            case OBJECT.QUIVER:
+                player.inventory.arrow = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+
+            case OBJECT.KEY:
+                player.inventory.key = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+
+            case OBJECT.AXE:
+                player.inventory.axe = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+
+            case OBJECT.CROWN:
+                player.inventory.crown = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+
+            case OBJECT.BOAT:
+                player.inventory.boat = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+
+            default:
+                return;
+        }
+
+        playSound(SOUND.PICKUP);
+    }
+}
+
+
+/* =========================================================
+   KEYBOARD
+
+   WASD movement.
+
+   Only solid floor blocks are walkable.
+========================================================= */
+
+document.addEventListener(
+    "keydown",
+    function(e) {
+
+        let dx = 0;
+        let dy = 0;
+
+        switch (e.key.toLowerCase()) {
+
+            case "w":
+                dy = -1;
+                player.direction = N;
+                break;
+
+            case "s":
+                dy = 1;
+                player.direction = S;
+                break;
+
+            case "a":
+                dx = -1;
+                player.direction = W;
+                break;
+
+            case "d":
+                dx = 1;
+                player.direction = E;
+                break;
+
+            default:
+                return;
+        }
+
+        e.preventDefault();
+
+        const nx = player.x + dx;
+        const ny = player.y + dy;
+
+        // World boundaries
+        if (
+            nx < 0 ||
+            ny < 0 ||
+            nx >= WORLD_W ||
+            ny >= WORLD_H
+        ) {
+            return;
+        }
+
+        // Terrain collision
+        const blockValue = getWorldBlock(nx, ny);
+        const blockID = decodeBlock(blockValue).block;
+
+        if (blockID !== 1) {
+            draw();
+            return;
+        }
+
+        // Move player
+        player.x = nx;
+        player.y = ny;
+
+        // Center camera on player
+        cameraX =
+            player.x - Math.floor(VIEW_W / 2);
+
+        cameraY =
+            player.y - Math.floor(VIEW_H / 2);
+
+        clampCamera();
+
+        // Footstep
+        playSound(SOUND.STEP, 1);
+
+        // Collect items
+        checkPlayerPickup();
+
+        draw();
+    }
+);
+
+
+/* =========================================================
+   INITIALIZATION
+========================================================= */
+
+initAudio();
+
+setInterval(function() {
+    updateMonsterSounds();
+}, 2000);
+
+
+/* =========================================================
+   START
+========================================================= */
+
+draw();
+
+</script>
+
+</body>
+</html>

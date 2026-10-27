@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Scrolling Room Dungeon Test</title>
+
+<style>
+html, body {
+    margin: 0;
+    height: 100%;
+    background: #111;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#wrap {
+    text-align: center;
+}
+
+canvas {
+    border: 2px solid #777;
+    background: #000;
+
+    /*
+        Internal viewport = 20 x 12 pixel blocks.
+        Each block is 8x8 canvas pixels.
+
+        Canvas internal size = 160 x 96.
+        CSS enlarges it for easier viewing.
+    */
+    width: 800px;
+    height: 480px;
+
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+#info {
+    margin-top: 10px;
+    font-size: 14px;
+    color: #aaa;
+}
+</style>
+</head>
+
+<body>
+
+<div id="wrap">
+    <canvas id="game" width="160" height="96"></canvas>
+
+    <div id="info">
+        WASD = scroll dungeon
+    </div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   BASIC CONSTANTS
+========================================================= */
+
+const PIXEL = 8;
+
+/*
+    Dungeon consists of ROOM TILES.
+
+    Each room tile:
+        8 x 8 pixel blocks
+
+    Dungeon:
+        12 x 4 room tiles
+
+    Therefore dungeon pixel-block size:
+        96 x 32
+*/
+
+const ROOM_SIZE = 8;
+
+const DUNGEON_ROOMS_W = 12;
+const DUNGEON_ROOMS_H = 4;
+
+const WORLD_W = DUNGEON_ROOMS_W * ROOM_SIZE;
+const WORLD_H = DUNGEON_ROOMS_H * ROOM_SIZE;
+
+
+/*
+    Viewport measured in pixel blocks.
+*/
+
+const VIEW_W = 20;
+const VIEW_H = 12;
+
+
+/* =========================================================
+   CANVAS
+========================================================= */
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+ctx.imageSmoothingEnabled = false;
+
+
+/* =========================================================
+   PIXEL BLOCK TYPES
+========================================================= */
+
+const BLOCK = {
+
+    FLOOR: 0,
+    WALL: 1,
+
+    /*
+        Diagonal blocks.
+
+        Name describes which HALF is wall.
+    */
+
+    WALL_NW: 2,
+    WALL_NE: 3,
+    WALL_SE: 4,
+    WALL_SW: 5
+};
+
+
+/* =========================================================
+   COLORS
+========================================================= */
+
+const COLOR = {
+    FLOOR: "#b99a68",
+    WALL:  "#3f7d4a"
+};
+
+
+/* =========================================================
+   ROOM TILE DEFINITIONS
+
+   Each room is an 8x8 block grid.
+
+   Rooms contain a central open area.
+
+   Three sides connect outward.
+
+   The missing connection differs for each tile.
+
+   Rotation later gives additional variation.
+========================================================= */
+
+function createBaseRoom(closedSide) {
+
+    const g = [];
+
+    for (let y = 0; y < ROOM_SIZE; y++) {
+
+        const row = [];
+
+        for (let x = 0; x < ROOM_SIZE; x++) {
+
+            /*
+                Outer wall by default.
+            */
+
+            let v = BLOCK.WALL;
+
+            /*
+                Interior room.
+            */
+
+            if (
+                x >= 1 &&
+                x <= 6 &&
+                y >= 1 &&
+                y <= 6
+            ) {
+                v = BLOCK.FLOOR;
+            }
+
+            row.push(v);
+        }
+
+        g.push(row);
+    }
+
+
+    /*
+        Door / path width = 2 blocks.
+    */
+
+    if (closedSide !== "N") {
+        g[0][3] = BLOCK.FLOOR;
+        g[0][4] = BLOCK.FLOOR;
+    }
+
+    if (closedSide !== "S") {
+        g[7][3] = BLOCK.FLOOR;
+        g[7][4] = BLOCK.FLOOR;
+    }
+
+    if (closedSide !== "W") {
+        g[3][0] = BLOCK.FLOOR;
+        g[4][0] = BLOCK.FLOOR;
+    }
+
+    if (closedSide !== "E") {
+        g[3][7] = BLOCK.FLOOR;
+        g[4][7] = BLOCK.FLOOR;
+    }
+
+    return g;
+}
+
+
+/* =========================================================
+   SPECIAL ROOM SHAPES
+========================================================= */
+
+function createRoundRoom() {
+
+    const W = BLOCK.WALL;
+    const F = BLOCK.FLOOR;
+
+    return [
+
+        [W,W,W,F,F,W,W,W],
+        [W,W,F,F,F,F,W,W],
+        [W,F,F,F,F,F,F,W],
+        [F,F,F,F,F,F,F,F],
+        [F,F,F,F,F,F,F,F],
+        [W,F,F,F,F,F,F,W],
+        [W,W,F,F,F,F,W,W],
+        [W,W,W,W,W,W,W,W]
+
+    ];
+}
+
+
+function createDiamondRoom() {
+
+    const W = BLOCK.WALL;
+    const F = BLOCK.FLOOR;
+
+    const NW = BLOCK.WALL_NW;
+    const NE = BLOCK.WALL_NE;
+    const SE = BLOCK.WALL_SE;
+    const SW = BLOCK.WALL_SW;
+
+    return [
+
+        [W,W,W,F,F,W,W,W],
+        [W,W,NW,F,F,NE,W,W],
+        [W,NW,F,F,F,F,NE,W],
+        [F,F,F,F,F,F,F,F],
+        [F,F,F,F,F,F,F,F],
+        [W,SW,F,F,F,F,SE,W],
+        [W,W,SW,F,F,SE,W,W],
+        [W,W,W,W,W,W,W,W]
+
+    ];
+}
+
+
+/* =========================================================
+   NINE ROOM TILES
+========================================================= */
+
+const ROOM_TILES = [
+
+    createBaseRoom("N"),
+    createBaseRoom("E"),
+    createBaseRoom("S"),
+    createBaseRoom("W"),
+
+    createRoundRoom(),
+    createDiamondRoom(),
+
+    createBaseRoom("N"),
+    createBaseRoom("E"),
+    createBaseRoom("S")
+];
+
+
+/* =========================================================
+   ROTATE ROOM TILE
+
+   rotation:
+       0
+       90
+       180
+       270
+========================================================= */
+
+function rotateBlockType(type) {
+
+    switch (type) {
+
+        case BLOCK.WALL_NW:
+            return BLOCK.WALL_NE;
+
+        case BLOCK.WALL_NE:
+            return BLOCK.WALL_SE;
+
+        case BLOCK.WALL_SE:
+            return BLOCK.WALL_SW;
+
+        case BLOCK.WALL_SW:
+            return BLOCK.WALL_NW;
+
+        default:
+            return type;
+    }
+}
+
+
+function rotateGrid90(grid) {
+
+    const result = [];
+
+    for (let y = 0; y < ROOM_SIZE; y++) {
+
+        result[y] = [];
+
+        for (let x = 0; x < ROOM_SIZE; x++) {
+
+            result[y][x] =
+                rotateBlockType(
+                    grid[ROOM_SIZE - 1 - x][y]
+                );
+        }
+    }
+
+    return result;
+}
+
+
+function getRotatedRoom(tileIndex, rotation) {
+
+    let grid = ROOM_TILES[tileIndex];
+
+    const turns =
+        ((rotation % 360) + 360) % 360 / 90;
+
+    for (let i = 0; i < turns; i++) {
+        grid = rotateGrid90(grid);
+    }
+
+    return grid;
+}
+
+
+/* =========================================================
+   DUNGEON ROOM MAP
+
+   Each dungeon cell stores:
+
+       tile
+       rotation
+========================================================= */
+
+const dungeon = [];
+
+for (let y = 0; y < DUNGEON_ROOMS_H; y++) {
+
+    dungeon[y] = [];
+
+    for (let x = 0; x < DUNGEON_ROOMS_W; x++) {
+
+        dungeon[y][x] = {
+
+            tile:
+                Math.floor(
+                    Math.random() *
+                    ROOM_TILES.length
+                ),
+
+            rotation:
+                Math.floor(
+                    Math.random() * 4
+                ) * 90
+        };
+    }
+}
+
+
+/* =========================================================
+   BUILD WORLD PIXEL GRID
+========================================================= */
+
+const world = [];
+
+for (let y = 0; y < WORLD_H; y++) {
+
+    world[y] = [];
+
+    for (let x = 0; x < WORLD_W; x++) {
+        world[y][x] = BLOCK.WALL;
+    }
+}
+
+
+function buildWorld() {
+
+    for (
+        let roomY = 0;
+        roomY < DUNGEON_ROOMS_H;
+        roomY++
+    ) {
+
+        for (
+            let roomX = 0;
+            roomX < DUNGEON_ROOMS_W;
+            roomX++
+        ) {
+
+            const def =
+                dungeon[roomY][roomX];
+
+            const room =
+                getRotatedRoom(
+                    def.tile,
+                    def.rotation
+                );
+
+
+            for (
+                let y = 0;
+                y < ROOM_SIZE;
+                y++
+            ) {
+
+                for (
+                    let x = 0;
+                    x < ROOM_SIZE;
+                    x++
+                ) {
+
+                    const wx =
+                        roomX * ROOM_SIZE + x;
+
+                    const wy =
+                        roomY * ROOM_SIZE + y;
+
+                    world[wy][wx] =
+                        room[y][x];
+                }
+            }
+        }
+    }
+}
+
+buildWorld();
+
+
+/* =========================================================
+   CAMERA
+========================================================= */
+
+let cameraX = 0;
+let cameraY = 0;
+
+
+/* =========================================================
+   DRAW ONE 8x8 PIXEL BLOCK
+========================================================= */
+
+function drawBlock(type, sx, sy) {
+
+    const x = sx * PIXEL;
+    const y = sy * PIXEL;
+
+
+    /*
+        Base floor.
+    */
+
+    ctx.fillStyle = COLOR.FLOOR;
+
+    ctx.fillRect(
+        x,
+        y,
+        PIXEL,
+        PIXEL
+    );
+
+
+    /*
+        Solid wall.
+    */
+
+    if (type === BLOCK.WALL) {
+
+        ctx.fillStyle = COLOR.WALL;
+
+        ctx.fillRect(
+            x,
+            y,
+            PIXEL,
+            PIXEL
+        );
+
+        return;
+    }
+
+
+    /*
+        Diagonal wall sections.
+    */
+
+    ctx.fillStyle = COLOR.WALL;
+
+    ctx.beginPath();
+
+
+    if (type === BLOCK.WALL_NW) {
+
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + PIXEL, y);
+        ctx.lineTo(x, y + PIXEL);
+
+    }
+
+    else if (type === BLOCK.WALL_NE) {
+
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + PIXEL, y);
+        ctx.lineTo(x + PIXEL, y + PIXEL);
+
+    }
+
+    else if (type === BLOCK.WALL_SE) {
+
+        ctx.moveTo(x + PIXEL, y);
+        ctx.lineTo(x + PIXEL, y + PIXEL);
+        ctx.lineTo(x, y + PIXEL);
+
+    }
+
+    else if (type === BLOCK.WALL_SW) {
+
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y + PIXEL);
+        ctx.lineTo(x + PIXEL, y + PIXEL);
+
+    }
+
+    else {
+        return;
+    }
+
+
+    ctx.closePath();
+    ctx.fill();
+}
+
+
+/* =========================================================
+   DRAW VIEWPORT
+========================================================= */
+
+function draw() {
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    for (
+        let sy = 0;
+        sy < VIEW_H;
+        sy++
+    ) {
+
+        for (
+            let sx = 0;
+            sx < VIEW_W;
+            sx++
+        ) {
+
+            const wx =
+                cameraX + sx;
+
+            const wy =
+                cameraY + sy;
+
+
+            if (
+                wx < 0 ||
+                wy < 0 ||
+                wx >= WORLD_W ||
+                wy >= WORLD_H
+            ) {
+
+                drawBlock(
+                    BLOCK.WALL,
+                    sx,
+                    sy
+                );
+
+                continue;
+            }
+
+
+            drawBlock(
+                world[wy][wx],
+                sx,
+                sy
+            );
+        }
+    }
+}
+
+
+/* =========================================================
+   CAMERA MOVEMENT
+========================================================= */
+
+function clampCamera() {
+
+    cameraX =
+        Math.max(
+            0,
+            Math.min(
+                cameraX,
+                WORLD_W - VIEW_W
+            )
+        );
+
+    cameraY =
+        Math.max(
+            0,
+            Math.min(
+                cameraY,
+                WORLD_H - VIEW_H
+            )
+        );
+}
+
+
+/* =========================================================
+   KEYBOARD
+========================================================= */
+
+document.addEventListener(
+    "keydown",
+    function(e) {
+
+        let moved = false;
+
+        switch (
+            e.key.toLowerCase()
+        ) {
+
+            case "w":
+                cameraY--;
+                moved = true;
+                break;
+
+            case "s":
+                cameraY++;
+                moved = true;
+                break;
+
+            case "a":
+                cameraX--;
+                moved = true;
+                break;
+
+            case "d":
+                cameraX++;
+                moved = true;
+                break;
+        }
+
+
+        if (moved) {
+
+            e.preventDefault();
+
+            clampCamera();
+            draw();
+        }
+    }
+);
+
+
+/* =========================================================
+   INITIAL DRAW
+========================================================= */
+
+draw();
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,1038 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>River Placement Editor</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #171b1a;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+}
+
+h2 {
+    margin: 0 0 8px;
+    color: #e6e6e6;
+}
+
+#layout {
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+#mapPanel {
+    flex: 0 0 auto;
+}
+
+#map {
+    display: block;
+    background: #83b86a;
+    border: 2px solid #555;
+    image-rendering: pixelated;
+    cursor: crosshair;
+    max-width: 100%;
+    touch-action: none;
+}
+
+#sidebar {
+    width: 280px;
+    background: #252b28;
+    border: 1px solid #454c46;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.section {
+    margin-bottom: 18px;
+}
+
+.sectionTitle {
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #a0d8e8;
+}
+
+#palette {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.spriteButton {
+    background: #303b32;
+    border: 2px solid #4d5c50;
+    border-radius: 5px;
+    color: white;
+    padding: 8px;
+    cursor: pointer;
+}
+
+.spriteButton.selected {
+    border-color: #a0d8e8;
+    background: #405d50;
+}
+
+.spriteButton canvas {
+    display: block;
+    width: 80px;
+    height: 80px;
+    margin: auto;
+    image-rendering: pixelated;
+}
+
+.spriteButton span {
+    display: block;
+    margin-top: 5px;
+    font-size: 12px;
+}
+
+button {
+    background: #39483e;
+    color: #eee;
+    border: 1px solid #607365;
+    border-radius: 4px;
+    padding: 8px 10px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #4a6252;
+}
+
+button.active {
+    background: #426f79;
+    border-color: #a0d8e8;
+}
+
+.buttonRow {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+#preview {
+    width: 128px;
+    height: 128px;
+    display: block;
+    margin: 10px auto;
+    image-rendering: pixelated;
+    border: 1px solid #657267;
+}
+
+#status {
+    font-size: 13px;
+    color: #c0d0c0;
+    line-height: 1.7;
+}
+
+textarea {
+    width: 100%;
+    height: 110px;
+    margin-top: 8px;
+    background: #111;
+    color: #b8e6bd;
+    font-family: monospace;
+    font-size: 11px;
+    resize: vertical;
+}
+
+label {
+    font-size: 13px;
+}
+</style>
+</head>
+
+<body>
+
+<div id="layout">
+
+    <div id="mapPanel">
+        <h2>River Placement Editor</h2>
+        <canvas id="map" width="800" height="480"></canvas>
+        <p id="status">
+            Select a river sprite and paint on the map.
+        </p>
+    </div>
+
+    <div id="sidebar">
+
+        <div class="section">
+            <div class="sectionTitle">River Palette</div>
+            <div id="palette"></div>
+        </div>
+
+        <div class="section">
+            <div class="sectionTitle">Rotation</div>
+            <div class="buttonRow">
+                <button onclick="rotateBrush(-1)">↶ 90°</button>
+                <button onclick="rotateBrush(1)">↷ 90°</button>
+                <button onclick="setRotation(0)">Reset</button>
+            </div>
+            <p id="rotationLabel">Rotation: 0°</p>
+        </div>
+
+		<div class="section">
+			<div class="sectionTitle">Flip</div>
+		
+			<div class="buttonRow">
+				<button id="flipHButton"
+					onclick="flipBrushH()">
+					↔ Flip Horizontal
+				</button>
+		
+				<button id="flipVButton"
+					onclick="flipBrushV()">
+					↕ Flip Vertical
+				</button>
+			</div>
+		
+			<p id="flipLabel">No flips</p>
+		</div>
+
+        <div class="section">
+            <div class="sectionTitle">Brush Preview</div>
+            <canvas id="preview" width="128" height="128"></canvas>
+        </div>
+
+        <div class="section">
+            <div class="sectionTitle">Tools</div>
+            <div class="buttonRow">
+                <button id="paintButton" class="active"
+                    onclick="setTool('paint')">Paint</button>
+                <button id="eraseButton"
+                    onclick="setTool('erase')">Erase</button>
+                <button onclick="clearMap()">Clear</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="sectionTitle">Display</div>
+            <label>
+                <input type="checkbox" id="showGrid" checked>
+                Show tile grid
+            </label>
+        </div>
+
+        <div class="section">
+            <div class="sectionTitle">Map Data</div>
+            <div class="buttonRow">
+                <button onclick="exportMap()">Export</button>
+                <button onclick="importMap()">Import</button>
+            </div>
+            <textarea id="mapData"
+                placeholder="Exported JSON appears here"></textarea>
+        </div>
+
+        <div class="section">
+            <div class="sectionTitle">Controls</div>
+            <div id="status">
+                Left mouse: Paint<br>
+                Right mouse: Erase<br>
+                R: Rotate clockwise<br>
+                Shift+R: Rotate counterclockwise<br>
+                E: Eraser<br>
+                P: Paint
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   RIVER EDITOR CONSTANTS
+========================================================= */
+
+const MAP_W = 20;
+const MAP_H = 12;
+
+const TILE_SIZE = 40;
+const PIXELS = 8;
+const PIXEL_SIZE = TILE_SIZE / PIXELS;
+
+const SPRITE_COLORS = {
+    11: "#83b86a",
+    12: "#a0c784",
+    13: "#245c98",
+    14: "#408ac0",
+    15: "#a0d8e8"
+};
+
+/* =========================================================
+   ORIGINAL RIVER SPRITES
+
+   Taken from dungeon_definitions.js.
+
+   Sprite IDs:
+       22 = RIVER_1
+       23 = RIVER_2
+       48 = RIVER_3
+       49 = RIVER_4
+========================================================= */
+
+const RIVER_SPRITES = {
+
+    22: [
+        0,15,0,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,0,0,15,0,0,0,0,
+        0,0,0,0,15,0,0,0,
+        0,0,15,0,15,0,0,0,
+        0,15,0,15,0,0,0,0,
+        15,0,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0
+    ],
+
+    23: [
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,15,15,0,
+        15,0,0,0,15,0,0,15,
+        15,0,15,15,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0
+    ],
+
+    48: [
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        15,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0
+    ],
+
+    49: [
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,15,15,0,
+        15,0,0,0,15,0,0,15,
+        15,0,15,15,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0
+    ]
+};
+
+/* =========================================================
+   GRASS BACKGROUND
+
+   Original grass sprite ID 44.
+========================================================= */
+
+const GRASS = [
+    11,11,11,11,11,11,11,11,
+    11,11,11,11,12,11,11,11,
+    11,11,12,11,11,11,11,11,
+    11,11,11,11,11,11,11,11,
+    11,11,11,11,11,11,12,11,
+    11,12,11,11,11,11,11,11,
+    11,11,11,11,11,11,11,11,
+    11,11,11,12,11,11,11,11
+];
+
+/* =========================================================
+   MAP DATA
+
+   Each cell is null or:
+
+   {
+       sprite: 22,
+       rotation: 0
+   }
+
+   rotation is 0, 1, 2, or 3.
+========================================================= */
+
+let mapData = Array.from(
+    { length: MAP_H },
+    () => Array(MAP_W).fill(null)
+);
+
+let selectedSprite = 22;
+let selectedRotation = 0;
+let selectedTool = "paint";
+let selectedFlipH = false;
+let selectedFlipV = false;
+
+let mouseDown = false;
+let hoverX = -1;
+let hoverY = -1;
+
+/* =========================================================
+   CANVAS
+========================================================= */
+
+const canvas = document.getElementById("map");
+const ctx = canvas.getContext("2d");
+
+const preview = document.getElementById("preview");
+const previewCtx = preview.getContext("2d");
+
+ctx.imageSmoothingEnabled = false;
+previewCtx.imageSmoothingEnabled = false;
+
+/* =========================================================
+   ROTATE PIXEL COORDINATES
+
+   Rotation is clockwise in increments of 90°.
+
+   0: (x,y)
+   1: (7-y,x)
+   2: (7-x,7-y)
+   3: (y,7-x)
+========================================================= */
+
+function transformPixel(
+    x,
+    y,
+    rotation,
+    flipH = false,
+    flipV = false
+) {
+
+    // Flip original sprite
+    if (flipH)
+        x = 7 - x;
+
+    if (flipV)
+        y = 7 - y;
+
+    // Rotate clockwise
+    switch (rotation & 3) {
+
+        case 1:
+            return [7 - y, x];
+
+        case 2:
+            return [7 - x, 7 - y];
+
+        case 3:
+            return [y, 7 - x];
+
+        default:
+            return [x, y];
+    }
+}
+
+/* =========================================================
+   DRAW 8x8 SPRITE
+
+   Transparent pixels reveal the grass below.
+========================================================= */
+
+function drawPixelSprite(
+    context,
+    sprite,
+    rotation,
+    x,
+    y,
+    size,
+    flipH = false,
+    flipV = false
+) {
+    const pixelSize = size / 8;
+
+    for (let py = 0; py < 8; py++) {
+        for (let px = 0; px < 8; px++) {
+
+            const colorIndex = sprite[py * 8 + px];
+
+            if (colorIndex === 0)
+                continue;
+
+            const [rx, ry] = transformPixel(
+                px,
+                py,
+                rotation,
+                flipH,
+                flipV
+            );
+
+            context.fillStyle =
+                SPRITE_COLORS[colorIndex];
+
+            context.fillRect(
+                x + rx * pixelSize,
+                y + ry * pixelSize,
+                pixelSize,
+                pixelSize
+            );
+        }
+    }
+}
+
+/* =========================================================
+   DRAW TILE
+========================================================= */
+
+function drawTile(context, cell, x, y, size) {
+
+    drawPixelSprite(
+        context,
+        GRASS,
+        0,
+        x,
+        y,
+        size
+    );
+
+    if (cell !== null) {
+
+        drawPixelSprite(
+            context,
+            RIVER_SPRITES[cell.sprite],
+            cell.rotation,
+            x,
+            y,
+            size,
+            cell.flipH ?? false,
+            cell.flipV ?? false
+        );
+    }
+}
+
+/* =========================================================
+   DRAW MAP
+========================================================= */
+
+function drawMap() {
+
+    ctx.clearRect(
+        0, 0,
+        canvas.width,
+        canvas.height
+    );
+
+    for (let y = 0; y < MAP_H; y++) {
+        for (let x = 0; x < MAP_W; x++) {
+
+            drawTile(
+                ctx,
+                mapData[y][x],
+                x * TILE_SIZE,
+                y * TILE_SIZE,
+                TILE_SIZE
+            );
+        }
+    }
+
+    if (document.getElementById("showGrid").checked) {
+
+        ctx.strokeStyle = "rgba(0,0,0,0.22)";
+        ctx.lineWidth = 1;
+
+        for (let x = 0; x <= MAP_W; x++) {
+
+            ctx.beginPath();
+            ctx.moveTo(x * TILE_SIZE + 0.5, 0);
+            ctx.lineTo(x * TILE_SIZE + 0.5, MAP_H * TILE_SIZE);
+            ctx.stroke();
+        }
+
+        for (let y = 0; y <= MAP_H; y++) {
+
+            ctx.beginPath();
+            ctx.moveTo(0, y * TILE_SIZE + 0.5);
+            ctx.lineTo(MAP_W * TILE_SIZE, y * TILE_SIZE + 0.5);
+            ctx.stroke();
+        }
+    }
+
+    if (
+        hoverX >= 0 &&
+        hoverX < MAP_W &&
+        hoverY >= 0 &&
+        hoverY < MAP_H
+    ) {
+
+        const x = hoverX * TILE_SIZE;
+        const y = hoverY * TILE_SIZE;
+
+        ctx.fillStyle = "rgba(255,255,255,0.12)";
+        ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(
+            x + 1,
+            y + 1,
+            TILE_SIZE - 2,
+            TILE_SIZE - 2
+        );
+    }
+}
+
+/* =========================================================
+   BRUSH PREVIEW
+========================================================= */
+
+function drawPreview() {
+
+    previewCtx.clearRect(
+        0, 0,
+        preview.width,
+        preview.height
+    );
+
+    drawTile(
+        previewCtx,
+		{
+			sprite: selectedSprite,
+			rotation: selectedRotation,
+			flipH: selectedFlipH,
+			flipV: selectedFlipV
+		},
+        0,
+        0,
+        128
+    );
+
+    document.getElementById("rotationLabel")
+        .textContent =
+        "Rotation: " + selectedRotation * 90 + "°";
+}
+
+/* =========================================================
+   PALETTE
+========================================================= */
+
+function createPalette() {
+
+    const palette = document.getElementById("palette");
+    palette.innerHTML = "";
+
+    for (const id of [22, 23, 48, 49]) {
+
+        const button = document.createElement("button");
+        button.className = "spriteButton";
+
+        if (id === selectedSprite)
+            button.classList.add("selected");
+
+        const icon = document.createElement("canvas");
+        icon.width = 80;
+        icon.height = 80;
+
+        const iconCtx = icon.getContext("2d");
+        iconCtx.imageSmoothingEnabled = false;
+
+        drawTile(
+            iconCtx,
+            { sprite: id, rotation: 0 },
+            0, 0, 80
+        );
+
+        const label = document.createElement("span");
+        label.textContent = "River " + (
+            [22,23,48,49].indexOf(id) + 1
+        ) + " (ID " + id + ")";
+
+        button.appendChild(icon);
+        button.appendChild(label);
+
+        button.addEventListener("click", () => {
+
+            selectedSprite = id;
+            selectedTool = "paint";
+
+            createPalette();
+            updateToolButtons();
+            drawPreview();
+            drawMap();
+        });
+
+        palette.appendChild(button);
+    }
+}
+
+/* =========================================================
+   ROTATION
+========================================================= */
+
+function setRotation(rotation) {
+
+    selectedRotation = (rotation + 4) % 4;
+
+    drawPreview();
+    drawMap();
+}
+
+function rotateBrush(direction) {
+
+    setRotation(selectedRotation + direction);
+}
+
+function flipBrushH() {
+
+    selectedFlipH = !selectedFlipH;
+
+    updateFlipControls();
+    drawPreview();
+    drawMap();
+}
+
+function flipBrushV() {
+
+    selectedFlipV = !selectedFlipV;
+
+    updateFlipControls();
+    drawPreview();
+    drawMap();
+}
+
+function updateFlipControls() {
+
+    document.getElementById("flipHButton")
+        .classList.toggle("active", selectedFlipH);
+
+    document.getElementById("flipVButton")
+        .classList.toggle("active", selectedFlipV);
+
+    document.getElementById("flipLabel")
+        .textContent =
+        "Horizontal: " + (selectedFlipH ? "Yes" : "No") +
+        " | Vertical: " + (selectedFlipV ? "Yes" : "No");
+}
+
+/* =========================================================
+   TOOL SELECTION
+========================================================= */
+
+function setTool(tool) {
+
+    selectedTool = tool;
+
+    updateToolButtons();
+}
+
+function updateToolButtons() {
+
+    document.getElementById("paintButton")
+        .classList.toggle(
+            "active",
+            selectedTool === "paint"
+        );
+
+    document.getElementById("eraseButton")
+        .classList.toggle(
+            "active",
+            selectedTool === "erase"
+        );
+}
+
+/* =========================================================
+   PAINT CELL
+========================================================= */
+
+function paintCell(x, y, erase = false) {
+
+    if (
+        x < 0 || x >= MAP_W ||
+        y < 0 || y >= MAP_H
+    ) {
+        return;
+    }
+
+    if (erase || selectedTool === "erase") {
+
+        mapData[y][x] = null;
+
+    } else {
+
+		mapData[y][x] = {
+			sprite: selectedSprite,
+			rotation: selectedRotation,
+			flipH: selectedFlipH,
+			flipV: selectedFlipV
+		};
+    }
+
+    drawMap();
+}
+
+/* =========================================================
+   MOUSE POSITION
+========================================================= */
+
+function getMouseCell(event) {
+
+    const rect = canvas.getBoundingClientRect();
+
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    const x = Math.floor(
+        (event.clientX - rect.left) *
+        scaleX / TILE_SIZE
+    );
+
+    const y = Math.floor(
+        (event.clientY - rect.top) *
+        scaleY / TILE_SIZE
+    );
+
+    return [x, y];
+}
+
+/* =========================================================
+   MOUSE INPUT
+========================================================= */
+
+let rightMouseDown = false;
+
+canvas.addEventListener("pointerdown", event => {
+
+    event.preventDefault();
+
+    canvas.setPointerCapture(event.pointerId);
+
+    mouseDown = true;
+    rightMouseDown = event.button === 2;
+
+    const [x, y] = getMouseCell(event);
+
+    hoverX = x;
+    hoverY = y;
+
+    paintCell(x, y, rightMouseDown);
+    updateStatus(x, y);
+});
+
+canvas.addEventListener("pointermove", event => {
+
+    const [x, y] = getMouseCell(event);
+
+    hoverX = x;
+    hoverY = y;
+
+    if (mouseDown) {
+        paintCell(x, y, rightMouseDown);
+    } else {
+        drawMap();
+    }
+
+    updateStatus(x, y);
+});
+
+canvas.addEventListener("pointerup", () => {
+    mouseDown = false;
+    rightMouseDown = false;
+});
+
+canvas.addEventListener("pointercancel", () => {
+    mouseDown = false;
+    rightMouseDown = false;
+});
+
+canvas.addEventListener("pointerleave", () => {
+
+    if (!mouseDown) {
+        hoverX = -1;
+        hoverY = -1;
+        drawMap();
+    }
+});
+
+canvas.addEventListener("contextmenu", event => {
+    event.preventDefault();
+});
+
+/* =========================================================
+   STATUS
+========================================================= */
+
+function updateStatus(x, y) {
+
+    const status = document.getElementById("status");
+
+    if (
+        x < 0 || x >= MAP_W ||
+        y < 0 || y >= MAP_H
+    ) {
+        return;
+    }
+
+    const cell = mapData[y][x];
+
+    let description = "Grass";
+
+    if (cell) {
+        description =
+            "River " + cell.sprite +
+            ", rotation " + cell.rotation * 90 + "°";
+    }
+
+    status.textContent =
+        "Cell (" + x + ", " + y + ") — " +
+        description;
+}
+
+/* =========================================================
+   CLEAR MAP
+========================================================= */
+
+function clearMap() {
+
+    if (!confirm("Clear all river tiles?"))
+        return;
+
+    mapData = Array.from(
+        { length: MAP_H },
+        () => Array(MAP_W).fill(null)
+    );
+
+    drawMap();
+}
+
+/* =========================================================
+   EXPORT MAP
+========================================================= */
+
+function exportMap() {
+
+    const output = {
+        width: MAP_W,
+        height: MAP_H,
+        cells: mapData
+    };
+
+    document.getElementById("mapData").value =
+        JSON.stringify(output, null, 2);
+}
+
+/* =========================================================
+   IMPORT MAP
+========================================================= */
+
+function importMap() {
+
+    try {
+
+        const input = JSON.parse(
+            document.getElementById("mapData").value
+        );
+
+        if (
+            input.width !== MAP_W ||
+            input.height !== MAP_H ||
+            !Array.isArray(input.cells) ||
+            input.cells.length !== MAP_H
+        ) {
+            throw new Error("Invalid map dimensions");
+        }
+
+        const validIDs = [22, 23, 48, 49];
+
+        for (const row of input.cells) {
+
+            if (
+                !Array.isArray(row) ||
+                row.length !== MAP_W
+            ) {
+                throw new Error("Invalid map row");
+            }
+
+            for (const cell of row) {
+
+                if (cell === null)
+                    continue;
+
+                if (
+                    !cell ||
+                    !validIDs.includes(cell.sprite) ||
+                    !Number.isInteger(cell.rotation) ||
+                    cell.rotation < 0 ||
+                    cell.rotation > 3
+                ) {
+                    throw new Error("Invalid river cell");
+                }
+            }
+        }
+
+        mapData = input.cells.map(row =>
+            row.map(cell =>
+                cell === null ? null : {
+                    sprite: cell.sprite,
+                    rotation: cell.rotation
+                }
+            )
+        );
+
+        drawMap();
+
+    } catch (error) {
+
+        alert(
+            "Import failed: " + error.message
+        );
+    }
+}
+
+/* =========================================================
+   KEYBOARD SHORTCUTS
+========================================================= */
+
+document.addEventListener("keydown", event => {
+
+    if (
+        event.target.tagName === "TEXTAREA" ||
+        event.target.tagName === "INPUT"
+    ) {
+        return;
+    }
+
+    switch (event.key.toLowerCase()) {
+
+        case "r":
+            rotateBrush(event.shiftKey ? -1 : 1);
+            break;
+
+		case "h":
+			flipBrushH();
+			break;
+		
+		case "v":
+			flipBrushV();
+			break;
+
+        case "e":
+            setTool("erase");
+            break;
+
+        case "p":
+            setTool("paint");
+            break;
+    }
+});
+
+/* =========================================================
+   INITIALIZE
+========================================================= */
+
+document.getElementById("showGrid")
+    .addEventListener("change", drawMap);
+
+createPalette();
+drawPreview();
+drawMap();
+
+</script>
+</body>
+</html>

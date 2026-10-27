@@ -1,0 +1,1481 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Overworld Generator</title>
+<style>
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    padding: 20px;
+    background: #171b1a;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+}
+h2 { margin: 0 0 8px; }
+p { font-size: 13px; color: #b8c8bb; }
+#layout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 20px;
+}
+#map {
+    display: block;
+    border: 2px solid #555;
+    image-rendering: pixelated;
+    max-width: 100%;
+    background: #83b86a;
+}
+#controls {
+    width: 280px;
+    padding: 15px;
+    background: #252b28;
+    border: 1px solid #45564a;
+    border-radius: 8px;
+}
+button {
+    background: #405d50;
+    color: white;
+    border: 1px solid #71917b;
+    border-radius: 5px;
+    padding: 10px 15px;
+    cursor: pointer;
+    margin: 3px 0;
+}
+button:hover { background: #527661; }
+label {
+    display: block;
+    margin: 12px 0;
+    font-size: 13px;
+}
+input[type="number"] {
+    width: 75px;
+    padding: 5px;
+    background: #151c18;
+    color: white;
+    border: 1px solid #607365;
+}
+#status {
+    margin-top: 12px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #a0d8e8;
+}
+#rules {
+    margin-top: 12px;
+    max-height: 280px;
+    overflow: auto;
+    white-space: pre-wrap;
+    font: 11px monospace;
+    background: #151c18;
+    padding: 8px;
+    border: 1px solid #45564a;
+}
+</style>
+</head>
+<body>
+
+<h2>Overworld Generator</h2>
+<p>20 × 12 — organic mountain ranges, original rivers, forests and dungeons</p>
+
+<div id="layout">
+    <canvas id="map" width="800" height="480"></canvas>
+
+    <div id="controls">
+        <button onclick="generateOverworld()">Generate Overworld</button>
+        <button onclick="generateRivers()">Rivers Only</button>
+
+        <label>Number of rivers:
+            <input id="riverCount" type="number"
+                   min="1" max="8" value="2">
+        </label>
+
+        <label>Maximum river length:
+            <input id="riverLength" type="number"
+                   min="1" max="100" value="10">
+        </label>
+
+        <label>Mountain coverage (%):
+            <input id="mountainDensity" type="number"
+                   min="0" max="45" value="24">
+        </label>
+
+        <label>Dungeon mountains:
+            <input id="dungeonCount" type="number"
+                   min="1" max="8" value="5">
+        </label>
+
+        <label>Forest coverage (%):
+            <input id="forestDensity" type="number"
+                   min="0" max="45" value="19">
+        </label>
+
+        <label>
+            <input id="showGrid" type="checkbox"
+                   checked onchange="drawMap()">
+            Show grid
+        </label>
+
+        <label>
+            <input id="showReachable" type="checkbox"
+                   onchange="drawMap()">
+            Show initially reachable area
+        </label>
+
+        <div id="status"></div>
+
+        <h4>Fixed Neighbor Rules</h4>
+        <div id="rules"></div>
+    </div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   MAP
+========================================================= */
+
+const MAP_W = 20;
+const MAP_H = 12;
+const TILE_SIZE = 40;
+
+const canvas = document.getElementById("map");
+const ctx = canvas.getContext("2d");
+ctx.imageSmoothingEnabled = false;
+
+function createEmptyMap() {
+    return Array.from(
+        {length: MAP_H},
+        () => Array(MAP_W).fill(null)
+    );
+}
+
+let mapData = createEmptyMap();
+let reachable = new Set();
+
+/* =========================================================
+   COLORS
+========================================================= */
+
+const COLORS = {
+    2: "#6b4423",
+    3: "#d8b030",
+    4: "#b0c0d0",
+    5: "#202020",
+    7: "#65a84a",
+    8: "#eeeeee",
+    11: "#83b86a",
+    12: "#a0c784",
+    15: "#a0d8e8"
+};
+
+const MOUNTAIN_PALETTES = {
+    RED: "#a03030",
+    BLUE: "#3050a0",
+    GREEN: "#307040",
+    YELLOW: "#b09020",
+    PURPLE: "#703090",
+    GRAY: "#606060",
+    WHITE: "#ffffff"
+};
+
+/* =========================================================
+   GRASS
+========================================================= */
+
+const GRASS = [
+    11,11,11,11,11,11,11,11,
+    11,11,11,11,12,11,11,11,
+    11,11,12,11,11,11,11,11,
+    11,11,11,11,11,11,12,11,
+    11,11,11,11,11,11,12,11,
+    11,12,11,11,11,11,11,11,
+    11,11,11,11,11,11,11,11,
+    11,11,11,12,11,11,11,11
+];
+
+/* =========================================================
+   ORIGINAL RIVER SPRITES
+========================================================= */
+
+const RIVER_SPRITES = {
+    22: [
+        0,15,0,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,0,0,15,0,0,0,0,
+        0,0,0,0,15,0,0,0,
+        0,0,15,0,15,0,0,0,
+        0,15,0,15,0,0,0,0,
+        15,0,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0
+    ],
+    23: [
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,15,15,0,
+        15,0,0,0,15,0,0,15,
+        15,0,15,15,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0
+    ],
+    48: [
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        15,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,0,15,0,0,0,0,0,
+        0,15,0,0,0,0,0,0,
+        0,15,0,0,0,0,0,0
+    ]
+};
+
+/* =========================================================
+   ORIGINAL OVERWORLD SPRITES
+========================================================= */
+
+const OVERWORLD_SPRITES = {
+    20: [
+        0,4,0,0,0,0,0,0,
+        4,4,4,0,4,0,0,0,
+        0,0,0,4,4,4,0,0,
+        0,0,4,4,4,4,4,0,
+        0,4,0,4,4,4,4,4,
+        4,4,4,0,0,0,0,0,
+        0,4,4,4,0,0,4,0,
+        0,0,0,0,0,4,4,4
+    ],
+    21: [
+        0,0,0,0,0,0,4,0,
+        0,0,0,4,0,4,4,4,
+        0,0,4,4,4,0,0,0,
+        0,4,4,4,4,4,0,0,
+        4,4,4,4,4,0,4,0,
+        0,0,0,0,0,4,4,4,
+        0,4,0,0,4,4,4,0,
+        4,4,4,0,0,0,0,0
+    ],
+    25: [
+        0,0,0,11,0,7,0,0,
+        0,11,7,7,7,7,11,0,
+        11,7,7,12,7,11,7,0,
+        0,7,11,7,7,7,7,11,
+        0,0,7,0,11,7,0,0,
+        0,11,7,7,7,7,7,0,
+        11,7,2,7,12,2,11,0,
+        0,0,2,0,0,2,0,0
+    ],
+    46: [
+        0,0,8,0,0,0,0,0,
+        0,0,0,8,0,0,0,0,
+        0,0,4,0,0,0,0,0,
+        0,2,2,2,2,2,2,0,
+        2,2,2,2,2,2,2,2,
+        0,5,5,5,5,5,5,0,
+        0,5,3,5,5,3,5,0,
+        0,5,5,5,5,3,5,0
+    ]
+};
+
+/* =========================================================
+   DIRECTIONS
+========================================================= */
+
+const DIR = [
+    {name:"N", dx:0, dy:-1},
+    {name:"E", dx:1, dy:0},
+    {name:"S", dx:0, dy:1},
+    {name:"W", dx:-1, dy:0}
+];
+
+/* =========================================================
+   ORIGINAL FIXED RIVER RULES
+
+   Compact representation:
+   [sprite, rotation, flipH, flipV]
+
+   These are the same 20 rule entries.
+========================================================= */
+
+const FIXED_RULES = [
+
+    {
+        from:[22,0,false,false],
+        neighbors:{
+            N:[[48,0,false,false],[23,2,true,false]],
+            E:[],
+            S:[[23,0,false,false],[48,2,true,false]],
+            W:[]
+        }
+    },
+    {
+        from:[22,1,false,false],
+        neighbors:{
+            N:[],
+            E:[[48,1,false,false],[23,3,true,false]],
+            S:[],
+            W:[[23,1,false,false],[48,3,true,false]]
+        }
+    },
+    {
+        from:[22,2,false,false],
+        neighbors:{
+            N:[[23,2,false,false],[48,0,true,false]],
+            E:[],
+            S:[[48,2,false,false],[23,0,true,false]],
+            W:[]
+        }
+    },
+    {
+        from:[22,3,false,false],
+        neighbors:{
+            N:[],
+            E:[[23,3,false,false],[48,1,true,false]],
+            S:[],
+            W:[[48,3,false,false],[23,1,true,false]]
+        }
+    },
+
+    {
+        from:[23,0,false,false],
+        neighbors:{
+            N:[[22,0,false,false],[48,0,false,false]],
+            E:[[48,0,false,false]],
+            S:[],
+            W:[]
+        }
+    },
+    {
+        from:[23,1,false,false],
+        neighbors:{
+            N:[],
+            E:[[22,1,false,false],[48,1,false,false]],
+            S:[[48,1,false,false]],
+            W:[]
+        }
+    },
+    {
+        from:[23,2,false,false],
+        neighbors:{
+            N:[],
+            E:[],
+            S:[[22,2,false,false],[48,2,false,false]],
+            W:[[48,2,false,false]]
+        }
+    },
+    {
+        from:[23,3,false,false],
+        neighbors:{
+            N:[[48,3,false,false]],
+            E:[],
+            S:[],
+            W:[[22,3,false,false],[48,3,false,false]]
+        }
+    },
+    {
+        from:[23,2,true,false],
+        neighbors:{
+            N:[],
+            E:[[48,2,true,false]],
+            S:[[22,0,false,false]],
+            W:[]
+        }
+    },
+    {
+        from:[23,3,true,false],
+        neighbors:{
+            N:[],
+            E:[],
+            S:[[48,3,true,false]],
+            W:[[22,1,false,false]]
+        }
+    },
+    {
+        from:[23,0,true,false],
+        neighbors:{
+            N:[[22,2,false,false]],
+            E:[],
+            S:[],
+            W:[[48,0,true,false]]
+        }
+    },
+    {
+        from:[23,1,true,false],
+        neighbors:{
+            N:[[48,1,true,false]],
+            E:[[22,3,false,false]],
+            S:[],
+            W:[]
+        }
+    },
+
+    {
+        from:[48,0,false,false],
+        neighbors:{
+            N:[],
+            E:[],
+            S:[[22,0,false,false],[23,0,false,false]],
+            W:[[23,0,false,false]]
+        }
+    },
+    {
+        from:[48,1,false,false],
+        neighbors:{
+            N:[[23,1,false,false]],
+            E:[],
+            S:[],
+            W:[[22,1,false,false],[23,1,false,false]]
+        }
+    },
+    {
+        from:[48,2,false,false],
+        neighbors:{
+            N:[[22,2,false,false],[23,2,false,false]],
+            E:[[23,2,false,false]],
+            S:[],
+            W:[]
+        }
+    },
+    {
+        from:[48,3,false,false],
+        neighbors:{
+            N:[],
+            E:[[22,3,false,false],[23,3,false,false]],
+            S:[[23,3,false,false]],
+            W:[]
+        }
+    },
+    {
+        from:[48,2,true,false],
+        neighbors:{
+            N:[[22,0,false,false]],
+            E:[],
+            S:[],
+            W:[[23,2,true,false]]
+        }
+    },
+    {
+        from:[48,3,true,false],
+        neighbors:{
+            N:[[23,3,true,false]],
+            E:[[22,1,false,false]],
+            S:[],
+            W:[]
+        }
+    },
+    {
+        from:[48,0,true,false],
+        neighbors:{
+            N:[],
+            E:[[23,0,true,false]],
+            S:[[22,2,false,false]],
+            W:[]
+        }
+    },
+    {
+        from:[48,1,true,false],
+        neighbors:{
+            N:[],
+            E:[],
+            S:[[23,1,true,false]],
+            W:[[22,3,false,false]]
+        }
+    }
+];
+
+/* =========================================================
+   RIVER RULE ENGINE
+========================================================= */
+
+function makeCell(data) {
+    return {
+        sprite:data[0],
+        rotation:data[1],
+        flipH:data[2],
+        flipV:data[3]
+    };
+}
+
+function copyCell(c) {
+    return {
+        sprite:c.sprite,
+        rotation:c.rotation,
+        flipH:!!c.flipH,
+        flipV:!!c.flipV
+    };
+}
+
+function cellKey(c) {
+    return [
+        c.sprite,
+        c.rotation,
+        Number(c.flipH),
+        Number(c.flipV)
+    ].join(":");
+}
+
+function rotateCell(c, turns) {
+    return {
+        ...copyCell(c),
+        rotation:(c.rotation+turns)%4
+    };
+}
+
+const neighborRules = new Map();
+
+function getRuleSlots(c) {
+    const key = cellKey(c);
+
+    if (!neighborRules.has(key))
+        neighborRules.set(key,[[],[],[],[]]);
+
+    return neighborRules.get(key);
+}
+
+function addRule(from,direction,to) {
+    const list = getRuleSlots(from)[direction];
+    const key = cellKey(to);
+
+    if (!list.some(c=>cellKey(c)===key))
+        list.push(copyCell(to));
+}
+
+function buildRules() {
+
+    neighborRules.clear();
+
+    for (const rule of FIXED_RULES) {
+
+        const source = makeCell(rule.from);
+
+        for (let direction=0;direction<4;direction++) {
+
+            const name = DIR[direction].name;
+
+            for (const data of rule.neighbors[name]) {
+
+                const target = makeCell(data);
+
+                for (let turns=0;turns<4;turns++) {
+
+                    const from = rotateCell(source,turns);
+                    const to = rotateCell(target,turns);
+                    const d = (direction+turns)%4;
+
+                    addRule(from,d,to);
+                    addRule(to,(d+2)%4,from);
+                }
+            }
+        }
+    }
+}
+
+/* =========================================================
+   DRAW SPRITES
+========================================================= */
+
+function transformPixel(x,y,rotation,flipH,flipV) {
+
+    if (flipH) x=7-x;
+    if (flipV) y=7-y;
+
+    switch(rotation&3) {
+        case 1:return [7-y,x];
+        case 2:return [7-x,7-y];
+        case 3:return [y,7-x];
+        default:return [x,y];
+    }
+}
+
+function drawSprite(
+    pixels,rotation,px,py,size,
+    flipH=false,flipV=false
+) {
+    const scale=size/8;
+
+    for(let y=0;y<8;y++) {
+        for(let x=0;x<8;x++) {
+
+            const color=pixels[y*8+x];
+            if(!color)continue;
+
+            const [rx,ry]=transformPixel(
+                x,y,rotation,flipH,flipV
+            );
+
+            ctx.fillStyle=COLORS[color];
+            ctx.fillRect(
+                px+rx*scale,
+                py+ry*scale,
+                scale,scale
+            );
+        }
+    }
+}
+
+function drawOverworldSprite(c,px,py) {
+
+    const pixels=OVERWORLD_SPRITES[c.sprite];
+    if(!pixels)return;
+
+    const scale=TILE_SIZE/8;
+
+    for(let y=0;y<8;y++) {
+        for(let x=0;x<8;x++) {
+
+            const color=pixels[y*8+x];
+            if(!color)continue;
+
+            ctx.fillStyle=
+                c.palette && color===4
+                ? MOUNTAIN_PALETTES[c.palette]
+                : COLORS[color];
+
+            ctx.fillRect(
+                px+x*scale,
+                py+y*scale,
+                scale,scale
+            );
+        }
+    }
+}
+
+function drawMap() {
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    for(let y=0;y<MAP_H;y++) {
+        for(let x=0;x<MAP_W;x++) {
+
+            const px=x*TILE_SIZE;
+            const py=y*TILE_SIZE;
+            const c=mapData[y][x];
+
+            drawSprite(GRASS,0,px,py,TILE_SIZE);
+
+            if(!c)continue;
+
+            if(RIVER_SPRITES[c.sprite]) {
+                drawSprite(
+                    RIVER_SPRITES[c.sprite],
+                    c.rotation,px,py,TILE_SIZE,
+                    c.flipH,c.flipV
+                );
+            } else {
+                drawOverworldSprite(c,px,py);
+            }
+        }
+    }
+
+    if(document.getElementById("showReachable").checked) {
+        for(const key of reachable) {
+            const [x,y]=key.split(",").map(Number);
+            ctx.fillStyle="rgba(255,255,100,0.30)";
+            ctx.fillRect(
+                x*TILE_SIZE,y*TILE_SIZE,
+                TILE_SIZE,TILE_SIZE
+            );
+        }
+    }
+
+    if(document.getElementById("showGrid").checked) {
+
+        ctx.strokeStyle="rgba(0,0,0,0.2)";
+        ctx.lineWidth=1;
+
+        for(let x=0;x<=MAP_W;x++) {
+            ctx.beginPath();
+            ctx.moveTo(x*TILE_SIZE+0.5,0);
+            ctx.lineTo(x*TILE_SIZE+0.5,MAP_H*TILE_SIZE);
+            ctx.stroke();
+        }
+
+        for(let y=0;y<=MAP_H;y++) {
+            ctx.beginPath();
+            ctx.moveTo(0,y*TILE_SIZE+0.5);
+            ctx.lineTo(MAP_W*TILE_SIZE,y*TILE_SIZE+0.5);
+            ctx.stroke();
+        }
+    }
+}
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function inMap(x,y) {
+    return x>=0 && x<MAP_W &&
+           y>=0 && y<MAP_H;
+}
+
+function randomInt(n) {
+    return Math.floor(Math.random()*n);
+}
+
+function range(a,b) {
+    return a+randomInt(b-a+1);
+}
+
+function randomItem(items) {
+    return items[randomInt(items.length)];
+}
+
+function isRiver(c) {
+    return !!c && !!RIVER_SPRITES[c.sprite];
+}
+
+function isMountain(c) {
+    return !!c && (c.sprite===20 || c.sprite===21);
+}
+
+const AROUND=[
+    [0,-1],[1,0],[0,1],[-1,0],
+    [1,-1],[1,1],[-1,1],[-1,-1]
+];
+
+function protectedArea(x,y) {
+    return (
+        x<=1 && Math.abs(y-6)<=1
+    ) || (
+        x>=18 && Math.abs(y-6)<=1
+    );
+}
+
+/* =========================================================
+   ORIGINAL RIVER GENERATION
+========================================================= */
+
+function findNextOptions(x,y,c,entry) {
+
+    const slots=neighborRules.get(cellKey(c));
+    if(!slots)return [];
+
+    const options=[];
+
+    for(let d=0;d<4;d++) {
+
+        if(d===entry)continue;
+
+        const nx=x+DIR[d].dx;
+        const ny=y+DIR[d].dy;
+
+        if(!inMap(nx,ny))continue;
+        if(mapData[ny][nx])continue;
+
+        for(const next of slots[d]) {
+
+            const weight=
+                d===2?6:
+                d===0?1:3;
+
+            for(let k=0;k<weight;k++) {
+                options.push({
+                    x:nx,
+                    y:ny,
+                    cell:next,
+                    entry:(d+2)%4
+                });
+            }
+        }
+    }
+
+    return options;
+}
+
+function generateSingleRiver(startX,maxLength) {
+
+    let x=startX;
+    let y=0;
+    let entry=0;
+    let count=0;
+
+    const starts=FIXED_RULES
+        .map(rule=>makeCell(rule.from))
+        .filter(c=>{
+            const slots=neighborRules.get(cellKey(c));
+            return slots && slots[2].length>0;
+        });
+
+    if(!starts.length)return 0;
+
+    let current=copyCell(randomItem(starts));
+
+    while(
+        count<maxLength &&
+        inMap(x,y) &&
+        !mapData[y][x]
+    ) {
+
+        mapData[y][x]=copyCell(current);
+        count++;
+
+        const options=findNextOptions(
+            x,y,current,entry
+        );
+
+        if(!options.length)break;
+
+        const pick=randomItem(options);
+
+        x=pick.x;
+        y=pick.y;
+        current=copyCell(pick.cell);
+        entry=pick.entry;
+    }
+
+    return count;
+}
+
+function generateRivers() {
+
+    const count=Math.max(
+        1,Math.min(
+            8,
+            Number(
+                document.getElementById("riverCount").value
+            )||2
+        )
+    );
+
+    const maxLength=Math.max(
+        1,Math.min(
+            100,
+            Number(
+                document.getElementById("riverLength").value
+            )||10
+        )
+    );
+
+    mapData=createEmptyMap();
+    reachable=new Set();
+
+    const lengths=[];
+
+    for(let i=0;i<count;i++) {
+
+        const startX=Math.max(
+            0,
+            Math.min(
+                MAP_W-1,
+                Math.floor((i+0.5)*MAP_W/count)
+            )
+        );
+
+        lengths.push(
+            generateSingleRiver(startX,maxLength)
+        );
+    }
+
+    document.getElementById("status").textContent=
+        "Generated "+count+
+        " rivers. Lengths: "+
+        lengths.join(", ")+
+        " tiles. Rule variants: "+
+        neighborRules.size+".";
+
+    drawMap();
+}
+
+/* =========================================================
+   ORGANIC MOUNTAIN RANGES
+
+   Wandering diagonal chains with branches.
+========================================================= */
+
+function putMountain(x,y,palette=null) {
+
+    if(!inMap(x,y))return false;
+    if(x===0 || x===MAP_W-1)return false;
+    if(protectedArea(x,y))return false;
+    if(mapData[y][x])return false;
+
+    mapData[y][x]={
+        sprite:randomInt(2)?20:21,
+        rotation:0,
+        flipH:false,
+        flipV:false,
+        palette
+    };
+
+    return true;
+}
+
+function growMountainRange(x,y,length,dx,dy) {
+
+    let count=0;
+
+    for(let i=0;i<length;i++) {
+
+        if(!inMap(x,y))break;
+
+        if(putMountain(x,y))
+            count++;
+
+        // Irregular side branches.
+        if(Math.random()<0.32) {
+
+            const sx=x+(randomInt(2)?1:-1);
+            const sy=y+randomInt(3)-1;
+
+            if(putMountain(sx,sy))
+                count++;
+        }
+
+        // Winding diagonal movement.
+        const r=Math.random();
+
+        if(r<0.48) {
+            x+=dx;
+            y+=dy;
+        }
+        else if(r<0.70) {
+            x+=dx;
+        }
+        else if(r<0.88) {
+            y+=dy;
+        }
+        else {
+            x-=dx;
+            y+=dy;
+        }
+
+        if(Math.random()<0.13)
+            dx=-dx;
+    }
+
+    return count;
+}
+
+function generateMountains(target) {
+
+    const anchors=[];
+    let count=0;
+    let attempts=0;
+
+    while(
+        count<target &&
+        attempts++<140
+    ) {
+
+        let x,y;
+
+        // Prefer starting some ranges near
+        // existing mountain ranges.
+        if(
+            anchors.length &&
+            Math.random()<0.65
+        ) {
+            const a=anchors[
+                randomInt(anchors.length)
+            ];
+
+            x=a.x+range(-4,4);
+            y=a.y+range(-3,3);
+        }
+        else {
+            x=range(2,MAP_W-3);
+            y=randomInt(MAP_H);
+        }
+
+        x=Math.max(1,Math.min(MAP_W-2,x));
+        y=Math.max(0,Math.min(MAP_H-1,y));
+
+        anchors.push({x,y});
+
+        count+=growMountainRange(
+            x,y,
+            Math.min(range(5,13),target-count),
+            randomInt(2)?1:-1,
+            randomInt(2)?1:-1
+        );
+    }
+
+    return count;
+}
+
+/* =========================================================
+   FORESTS
+
+   Prefer to grow near mountains and rivers.
+   Forests can connect separate barriers.
+========================================================= */
+
+function barrierNeighbors(x,y) {
+
+    let count=0;
+
+    for(const [dx,dy] of AROUND) {
+
+        const nx=x+dx;
+        const ny=y+dy;
+
+        if(
+            inMap(nx,ny) &&
+            mapData[ny][nx]
+        ) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+function generateForests(target) {
+
+    let placed=0;
+    let attempts=0;
+
+    while(
+        placed<target &&
+        attempts++<160
+    ) {
+
+        const candidates=[];
+
+        for(let y=0;y<MAP_H;y++) {
+            for(let x=1;x<MAP_W-1;x++) {
+
+                if(mapData[y][x])continue;
+                if(protectedArea(x,y))continue;
+
+                const attraction=barrierNeighbors(x,y);
+
+                if(
+                    attraction>0 ||
+                    Math.random()<0.04
+                ) {
+                    candidates.push({
+                        x,y,
+                        weight:1+2*attraction
+                    });
+                }
+            }
+        }
+
+        if(!candidates.length)break;
+
+        const total=candidates.reduce(
+            (sum,c)=>sum+c.weight,0
+        );
+
+        let roll=Math.random()*total;
+        let seed=candidates[0];
+
+        for(const c of candidates) {
+
+            roll-=c.weight;
+
+            if(roll<=0) {
+                seed=c;
+                break;
+            }
+        }
+
+        const frontier=[seed];
+        const size=range(4,12);
+        let local=0;
+
+        while(
+            frontier.length &&
+            local<size &&
+            placed<target
+        ) {
+
+            const index=randomInt(frontier.length);
+            const p=frontier.splice(index,1)[0];
+
+            if(!inMap(p.x,p.y))continue;
+            if(p.x===0 || p.x===MAP_W-1)continue;
+            if(protectedArea(p.x,p.y))continue;
+            if(mapData[p.y][p.x])continue;
+
+            mapData[p.y][p.x]={
+                sprite:25,
+                rotation:0,
+                flipH:false,
+                flipV:false
+            };
+
+            placed++;
+            local++;
+
+            for(const [dx,dy] of AROUND) {
+
+                if(Math.random()<0.52) {
+                    frontier.push({
+                        x:p.x+dx,
+                        y:p.y+dy
+                    });
+                }
+            }
+        }
+    }
+
+    return placed;
+}
+
+/* =========================================================
+   ACCESSIBILITY
+
+   Grass and hut are initially passable.
+
+   Mountains, dungeons, rivers and forests
+   are treated as barriers at this stage.
+========================================================= */
+
+function isOpen(x,y) {
+
+    if(!inMap(x,y))
+        return false;
+
+    const c=mapData[y][x];
+
+    return !c || c.sprite===46;
+}
+
+function floodFill(sx,sy) {
+
+    const found=new Set();
+    const queue=[[sx,sy]];
+    let head=0;
+
+    while(head<queue.length) {
+
+        const [x,y]=queue[head++];
+        const key=x+","+y;
+
+        if(found.has(key))continue;
+        if(!isOpen(x,y))continue;
+
+        found.add(key);
+
+        for(const [dx,dy] of AROUND) {
+
+            const nx=x+dx;
+            const ny=y+dy;
+
+            if(!isOpen(nx,ny))continue;
+
+            // No diagonal squeezing through
+            // two blocked cardinal neighbors.
+            if(
+                dx!==0 && dy!==0 &&
+                !isOpen(nx,y) &&
+                !isOpen(x,ny)
+            ) {
+                continue;
+            }
+
+            const nk=nx+","+ny;
+
+            if(!found.has(nk))
+                queue.push([nx,ny]);
+        }
+    }
+
+    return found;
+}
+
+/* =========================================================
+   IDENTIFY GRASSLAND REGIONS
+========================================================= */
+
+function identifyRegions() {
+
+    const ids=Array.from(
+        {length:MAP_H},
+        ()=>Array(MAP_W).fill(-1)
+    );
+
+    const regions=[];
+
+    for(let y=0;y<MAP_H;y++) {
+        for(let x=0;x<MAP_W;x++) {
+
+            if(ids[y][x]>=0)continue;
+            if(!isOpen(x,y))continue;
+
+            const area=floodFill(x,y);
+            const id=regions.length;
+
+            for(const key of area) {
+
+                const [xx,yy]=key
+                    .split(",")
+                    .map(Number);
+
+                ids[yy][xx]=id;
+            }
+
+            regions.push(area);
+        }
+    }
+
+    return {ids,regions};
+}
+
+/* =========================================================
+   DUNGEON PLACEMENT
+
+   Prefer mountain tiles touching more than
+   one accessible grassland region.
+
+   Limit dungeon count and keep them apart.
+========================================================= */
+
+function placeDungeons(count) {
+
+    const colors=[
+        "RED",
+        "BLUE",
+        "GREEN",
+        "YELLOW",
+        "PURPLE",
+        "GRAY"
+    ];
+
+    const {ids}=identifyRegions();
+    const candidates=[];
+
+    for(let y=1;y<MAP_H-1;y++) {
+        for(let x=1;x<MAP_W-1;x++) {
+
+            if(!isMountain(mapData[y][x]))
+                continue;
+
+            const touched=new Set();
+            let openSides=0;
+
+            for(const [dx,dy] of AROUND.slice(0,4)) {
+
+                const nx=x+dx;
+                const ny=y+dy;
+
+                if(
+                    inMap(nx,ny) &&
+                    ids[ny][nx]>=0
+                ) {
+                    openSides++;
+                    touched.add(ids[ny][nx]);
+                }
+            }
+
+            if(openSides>=2) {
+                candidates.push({
+                    x,y,
+                    score:touched.size*10+Math.random()
+                });
+            }
+        }
+    }
+
+    candidates.sort(
+        (a,b)=>b.score-a.score
+    );
+
+    const selected=[];
+
+    for(const p of candidates) {
+
+        if(selected.length>=count)
+            break;
+
+        // Avoid neighboring dungeons.
+        if(selected.some(
+            q=>Math.hypot(
+                q.x-p.x,
+                q.y-p.y
+            )<2.5
+        )) {
+            continue;
+        }
+
+        const color=colors[
+            selected.length%colors.length
+        ];
+
+        mapData[p.y][p.x].palette=color;
+        mapData[p.y][p.x].dungeon=true;
+
+        selected.push({
+            x:p.x,
+            y:p.y,
+            color
+        });
+    }
+
+    return selected;
+}
+
+/* =========================================================
+   LANDMARKS
+========================================================= */
+
+function placeLandmarks() {
+
+    const mid=Math.floor(MAP_H/2);
+
+    // Hut on the left edge.
+    mapData[mid][0]={
+        sprite:46,
+        rotation:0,
+        flipH:false,
+        flipV:false
+    };
+
+    // Cloudy Mountain on the right edge.
+    mapData[mid][MAP_W-1]={
+        sprite:20,
+        rotation:0,
+        flipH:false,
+        flipV:false,
+        palette:"WHITE"
+    };
+}
+
+/* =========================================================
+   GENERATE COMPLETE OVERWORLD
+
+   Rivers first, then organic mountain ranges,
+   then forests and dungeon crossings.
+========================================================= */
+
+function generateOverworld() {
+
+    // Original river engine resets the map.
+    generateRivers();
+
+    const total=MAP_W*MAP_H;
+
+    const mountainPct=Math.max(
+        0,
+        Math.min(
+            45,
+            Number(
+                document.getElementById(
+                    "mountainDensity"
+                ).value
+            )||0
+        )
+    );
+
+    const forestPct=Math.max(
+        0,
+        Math.min(
+            45,
+            Number(
+                document.getElementById(
+                    "forestDensity"
+                ).value
+            )||0
+        )
+    );
+
+    const dungeonCount=Math.max(
+        1,
+        Math.min(
+            8,
+            Number(
+                document.getElementById(
+                    "dungeonCount"
+                ).value
+            )||5
+        )
+    );
+
+    // Organic brown mountain ranges.
+    const mountains=generateMountains(
+        Math.round(total*mountainPct/100)
+    );
+
+    // Forests preferentially connect barriers.
+    const forests=generateForests(
+        Math.round(total*forestPct/100)
+    );
+
+    // A small number of colored dungeon tiles.
+    const dungeons=placeDungeons(dungeonCount);
+
+    // Fixed hut and Cloudy Mountain.
+    placeLandmarks();
+
+    // Initial accessibility analysis.
+    reachable=floodFill(
+        0,
+        Math.floor(MAP_H/2)
+    );
+
+    const regions=identifyRegions().regions;
+
+    document.getElementById("status").textContent=
+        "Mountains: "+mountains+
+        " | Forests: "+forests+
+        " | Dungeon crossings: "+dungeons.length+
+        " | Grassland regions: "+regions.length+
+        " | Initially reachable: "+
+        reachable.size+" tiles";
+
+    drawMap();
+}
+
+/* =========================================================
+   DISPLAY RIVER RULES
+========================================================= */
+
+function showRules() {
+
+    const lines=[];
+
+    for(const rule of FIXED_RULES) {
+
+        const from=makeCell(rule.from);
+
+        lines.push(
+            "BASE: "+
+            from.sprite+
+            " @"+(from.rotation*90)+"°"+
+            (from.flipH?" H":"")
+        );
+
+        for(const d of DIR) {
+
+            const neighbors=rule.neighbors[d.name];
+
+            const text=neighbors.length
+                ? neighbors.map(data=>{
+                    const c=makeCell(data);
+                    return (
+                        c.sprite+
+                        "@"+(c.rotation*90)+"°"+
+                        (c.flipH?" H":"")
+                    );
+                }).join(", ")
+                : "none";
+
+            lines.push(
+                "  "+d.name+": "+text
+            );
+        }
+
+        lines.push("");
+    }
+
+    document.getElementById("rules").textContent=
+        lines.join("\n");
+}
+
+/* =========================================================
+   INITIALIZE
+========================================================= */
+
+buildRules();
+showRules();
+generateOverworld();
+
+</script>
+</body>
+</html>

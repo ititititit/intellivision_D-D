@@ -1,0 +1,997 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sprite & Tile Editor</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 20px;
+    background: #151515;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+}
+
+h2 {
+    margin: 0 0 18px;
+}
+
+h3 {
+    margin: 0 0 10px;
+    font-size: 15px;
+    color: #ddd;
+}
+
+.editor {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+.panel {
+    background: #222;
+    border: 1px solid #444;
+    padding: 15px;
+    border-radius: 6px;
+}
+
+label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+}
+
+select,
+button {
+    background: #333;
+    color: #eee;
+    border: 1px solid #666;
+    padding: 7px 10px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #444;
+}
+
+select {
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+#paletteGrid {
+    display: grid;
+    grid-template-columns: repeat(4, 48px);
+    gap: 7px;
+    margin-bottom: 12px;
+}
+
+.colorCell {
+    width: 48px;
+    height: 48px;
+    border: 2px solid #555;
+    cursor: pointer;
+    position: relative;
+}
+
+.colorCell.selected {
+    border: 3px solid #fff;
+    outline: 2px solid #888;
+}
+
+.colorCell span {
+    position: absolute;
+    bottom: 2px;
+    right: 3px;
+    font-size: 11px;
+    color: white;
+    text-shadow:
+        1px 1px black,
+        -1px -1px black,
+        1px -1px black,
+        -1px 1px black;
+}
+
+.transparent {
+    background-color: #fff;
+    background-image:
+        linear-gradient(45deg, #aaa 25%, transparent 25%),
+        linear-gradient(-45deg, #aaa 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #aaa 75%),
+        linear-gradient(-45deg, transparent 75%, #aaa 75%);
+    background-size: 12px 12px;
+    background-position:
+        0 0, 0 6px, 6px -6px, -6px 0;
+}
+
+#spriteGrid {
+    display: grid;
+    grid-template-columns: repeat(8, 44px);
+    grid-template-rows: repeat(8, 44px);
+    border: 2px solid #888;
+    width: max-content;
+    user-select: none;
+    touch-action: none;
+}
+
+.pixel {
+    width: 44px;
+    height: 44px;
+    border: 1px solid rgba(128,128,128,0.4);
+    cursor: crosshair;
+}
+
+.pixel:hover {
+    outline: 2px solid #fff;
+    outline-offset: -2px;
+}
+
+.controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+textarea {
+    width: 100%;
+    height: 210px;
+    resize: vertical;
+    background: #101010;
+    color: #ddd;
+    border: 1px solid #555;
+    padding: 10px;
+    font-family: Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    tab-size: 4;
+}
+
+.codePanel {
+    width: 360px;
+}
+
+.codePanel button {
+    margin-top: 8px;
+}
+
+#preview {
+    width: 128px;
+    height: 128px;
+    image-rendering: pixelated;
+    background: #111;
+    border: 1px solid #555;
+}
+
+.hint {
+    font-size: 12px;
+    color: #aaa;
+    line-height: 1.5;
+    margin-top: 10px;
+}
+
+#status {
+    color: #aaddaa;
+    font-size: 12px;
+    min-height: 18px;
+    margin-top: 10px;
+}
+
+</style>
+</head>
+
+<body>
+
+<h2>Sprite & Tile Editor</h2>
+
+<div class="editor">
+
+    <!-- PALETTE -->
+    <div class="panel">
+
+        <h3>Palette</h3>
+
+        <label for="paletteSelect">Select palette</label>
+        <select id="paletteSelect"></select>
+
+        <div id="paletteGrid"></div>
+
+        <div class="hint">
+            Single-click: select color<br>
+            Double-click: edit color
+        </div>
+
+        <h3 style="margin-top:20px">Preview</h3>
+        <canvas id="preview" width="8" height="8"></canvas>
+
+    </div>
+
+    <!-- SPRITE DRAWING -->
+    <div class="panel">
+
+        <h3>8 × 8 Sprite</h3>
+
+        <div id="spriteGrid"></div>
+
+        <div class="controls">
+            <button onclick="clearSprite()">Clear</button>
+            <button onclick="fillSprite()">Fill</button>
+            <button onclick="rotateSprite()">Rotate 90°</button>
+            <button onclick="flipSprite()">Flip H</button>
+        </div>
+
+        <div id="status"></div>
+
+    </div>
+
+    <!-- ARRAY EDITORS -->
+    <div class="panel codePanel">
+
+        <h3>Palette Array</h3>
+
+        <textarea id="paletteText" spellcheck="false"></textarea>
+
+        <button onclick="applyPaletteText()">Apply Palette</button>
+        <button onclick="copyText('paletteText')">Copy</button>
+
+        <h3 style="margin-top:22px">Sprite Array</h3>
+
+        <textarea id="spriteText" spellcheck="false"></textarea>
+
+        <button onclick="applySpriteText()">Apply Sprite</button>
+        <button onclick="copyText('spriteText')">Copy</button>
+
+    </div>
+
+</div>
+
+<input
+    type="color"
+    id="colorPicker"
+    style="position:absolute;opacity:0;pointer-events:none;"
+>
+
+<script>
+"use strict";
+
+/* =========================================================
+   NAMED PALETTES
+
+   Each palette is an array.
+
+   Pixel values correspond directly to array indices.
+   null represents transparency.
+========================================================= */
+
+const PALETTES = {
+
+    TERRAIN: [
+        "#3f7d4a",  // 0 wall
+        "#b99a68"   // 1 floor
+    ],
+
+    SPRITE: [
+        null,       // 0 transparent
+        "#d8d0a0",  // 1 bone / light
+        "#6b4423",  // 2 brown
+        "#d8b030",  // 3 gold
+        "#b8b8b8",  // 4 steel
+        "#202020",  // 5 black
+        "#8b2020",  // 6 dark red
+        "#65a84a",  // 7 green
+        "#eeeeee",  // 8 white
+        "#704090",  // 9 purple
+        "#d06030",  // 10 orange
+        "#83b86a",  // 11 light grass
+        "#a0c784",  // 12 grass highlight
+        "#245c98",  // 13 deep river blue
+        "#408ac0",  // 14 lighter water blue
+        "#a0d8e8"   // 15 water highlights
+    ],
+
+    RED: [
+        null,
+        "#a03030",
+        "#ff7070"
+    ],
+
+    BLUE: [
+        null,
+        "#3050a0",
+        "#70b0ff"
+    ],
+
+    GREEN: [
+        null,
+        "#307040",
+        "#80d080"
+    ],
+
+    YELLOW: [
+        null,
+        "#b09020",
+        "#ffe070"
+    ],
+
+    PURPLE: [
+        null,
+        "#703090",
+        "#c080ff"
+    ],
+
+    GRAY: [
+        null,
+        "#606060",
+        "#b0b0b0"
+    ],
+
+    WHITE: [
+        null,
+        "#b0c0d0",
+        "#ffffff"
+    ]
+
+};
+
+
+/* =========================================================
+   EDITOR STATE
+========================================================= */
+
+const GRID_SIZE = 8;
+
+let currentPaletteName = "SPRITE";
+
+let selectedColor = 1;
+
+let sprite = new Array(64).fill(0);
+
+let drawing = false;
+
+let editingColorIndex = -1;
+
+
+/* =========================================================
+   HTML ELEMENTS
+========================================================= */
+
+const paletteSelect =
+    document.getElementById("paletteSelect");
+
+const paletteGrid =
+    document.getElementById("paletteGrid");
+
+const spriteGrid =
+    document.getElementById("spriteGrid");
+
+const paletteText =
+    document.getElementById("paletteText");
+
+const spriteText =
+    document.getElementById("spriteText");
+
+const colorPicker =
+    document.getElementById("colorPicker");
+
+const preview =
+    document.getElementById("preview");
+
+const previewCtx =
+    preview.getContext("2d");
+
+const statusElement =
+    document.getElementById("status");
+
+
+/* =========================================================
+   CURRENT PALETTE
+========================================================= */
+
+function getPalette() {
+
+    return PALETTES[currentPaletteName];
+
+}
+
+
+/* =========================================================
+   INITIALIZE PALETTE SELECTOR
+========================================================= */
+
+function initializePaletteSelector() {
+
+    paletteSelect.innerHTML = "";
+
+    for (const name of Object.keys(PALETTES)) {
+
+        const option = document.createElement("option");
+
+        option.value = name;
+        option.textContent = name;
+
+        paletteSelect.appendChild(option);
+
+    }
+
+    paletteSelect.value = currentPaletteName;
+
+    paletteSelect.addEventListener("change", () => {
+
+        currentPaletteName = paletteSelect.value;
+
+        selectedColor = 0;
+
+        renderPalette();
+        renderSprite();
+        updatePaletteText();
+
+    });
+
+}
+
+
+/* =========================================================
+   DRAW PALETTE GRID
+========================================================= */
+
+function renderPalette() {
+
+    paletteGrid.innerHTML = "";
+
+    const palette = getPalette();
+
+    palette.forEach((color, index) => {
+
+        const cell = document.createElement("div");
+
+        cell.className = "colorCell";
+
+        if (color === null) {
+
+            cell.classList.add("transparent");
+
+        } else {
+
+            cell.style.backgroundColor = color;
+
+        }
+
+        if (index === selectedColor) {
+
+            cell.classList.add("selected");
+
+        }
+
+        const number = document.createElement("span");
+
+        number.textContent = index;
+
+        cell.appendChild(number);
+
+        /* Single click selects the color */
+
+        cell.addEventListener("click", () => {
+
+            selectedColor = index;
+
+            renderPalette();
+
+        });
+
+        /* Double click opens the color editor */
+
+        cell.addEventListener("dblclick", () => {
+
+            editingColorIndex = index;
+
+            colorPicker.value = color || "#ffffff";
+
+            colorPicker.click();
+
+        });
+
+        paletteGrid.appendChild(cell);
+
+    });
+
+}
+
+
+/* =========================================================
+   COLOR PICKER
+
+   Editing a palette color updates the named palette
+   and immediately redraws the sprite.
+========================================================= */
+
+colorPicker.addEventListener("input", () => {
+
+    if (editingColorIndex < 0)
+        return;
+
+    const palette = getPalette();
+
+    palette[editingColorIndex] = colorPicker.value;
+
+    renderPalette();
+    renderSprite();
+    updatePaletteText();
+
+});
+
+
+/* =========================================================
+   CREATE DRAWING GRID
+========================================================= */
+
+function initializeSpriteGrid() {
+
+    spriteGrid.innerHTML = "";
+
+    for (let i = 0; i < 64; i++) {
+
+        const cell = document.createElement("div");
+
+        cell.className = "pixel";
+
+        cell.dataset.index = i;
+
+        cell.addEventListener("pointerdown", event => {
+
+            if (event.button !== 0)
+                return;
+
+            drawing = true;
+
+            paintPixel(i);
+
+            event.preventDefault();
+
+        });
+
+        cell.addEventListener("pointerenter", () => {
+
+            if (drawing) {
+
+                paintPixel(i);
+
+            }
+
+        });
+
+        spriteGrid.appendChild(cell);
+
+    }
+
+    window.addEventListener("pointerup", () => {
+
+        drawing = false;
+
+    });
+
+}
+
+
+/* =========================================================
+   PAINT PIXEL
+========================================================= */
+
+function paintPixel(index) {
+
+    sprite[index] = selectedColor;
+
+    renderSprite();
+
+}
+
+
+/* =========================================================
+   RENDER SPRITE GRID
+========================================================= */
+
+function renderSprite() {
+
+    const palette = getPalette();
+
+    const cells = spriteGrid.children;
+
+    for (let i = 0; i < 64; i++) {
+
+        const color = palette[sprite[i]];
+
+        const cell = cells[i];
+
+        cell.classList.remove("transparent");
+
+        cell.style.backgroundColor = "";
+
+        if (color === null || color === undefined) {
+
+            cell.classList.add("transparent");
+
+        } else {
+
+            cell.style.backgroundColor = color;
+
+        }
+
+    }
+
+    renderPreview();
+
+    updateSpriteText();
+
+}
+
+
+/* =========================================================
+   DRAW PREVIEW
+
+   Uses actual 8x8 canvas resolution.
+   CSS scales it to 128x128 without smoothing.
+========================================================= */
+
+function renderPreview() {
+
+    const palette = getPalette();
+
+    previewCtx.clearRect(0, 0, 8, 8);
+
+    for (let y = 0; y < 8; y++) {
+
+        for (let x = 0; x < 8; x++) {
+
+            const index = y * 8 + x;
+
+            const color = palette[sprite[index]];
+
+            if (color === null || color === undefined)
+                continue;
+
+            previewCtx.fillStyle = color;
+
+            previewCtx.fillRect(x, y, 1, 1);
+
+        }
+
+    }
+
+}
+
+
+/* =========================================================
+   SPRITE OPERATIONS
+========================================================= */
+
+function clearSprite() {
+
+    sprite.fill(0);
+
+    renderSprite();
+
+}
+
+
+function fillSprite() {
+
+    sprite.fill(selectedColor);
+
+    renderSprite();
+
+}
+
+
+function rotateSprite() {
+
+    const result = new Array(64).fill(0);
+
+    for (let y = 0; y < 8; y++) {
+
+        for (let x = 0; x < 8; x++) {
+
+            const oldIndex = y * 8 + x;
+
+            const newX = 7 - y;
+            const newY = x;
+
+            const newIndex = newY * 8 + newX;
+
+            result[newIndex] = sprite[oldIndex];
+
+        }
+
+    }
+
+    sprite = result;
+
+    renderSprite();
+
+}
+
+
+function flipSprite() {
+
+    const result = new Array(64).fill(0);
+
+    for (let y = 0; y < 8; y++) {
+
+        for (let x = 0; x < 8; x++) {
+
+            result[y * 8 + (7 - x)] =
+                sprite[y * 8 + x];
+
+        }
+
+    }
+
+    sprite = result;
+
+    renderSprite();
+
+}
+
+
+/* =========================================================
+   FORMAT PALETTE ARRAY
+========================================================= */
+
+function updatePaletteText() {
+
+    const palette = getPalette();
+
+    const lines = palette.map((color, index) => {
+
+        const value =
+            color === null
+                ? "null"
+                : `"${color}"`;
+
+        return `    ${value}${index < palette.length - 1 ? "," : ""}`;
+
+    });
+
+    paletteText.value =
+        "[\n" +
+        lines.join("\n") +
+        "\n]";
+
+}
+
+
+/* =========================================================
+   FORMAT SPRITE ARRAY
+
+   Always produces 8 rows of 8 numbers.
+========================================================= */
+
+function updateSpriteText() {
+
+    const lines = [];
+
+    for (let y = 0; y < 8; y++) {
+
+        const row = sprite.slice(y * 8, y * 8 + 8);
+
+        const values = row.join(",");
+
+        lines.push("    " + values + (y < 7 ? "," : ""));
+
+    }
+
+    spriteText.value =
+        "[\n" +
+        lines.join("\n") +
+        "\n]";
+
+}
+
+
+/* =========================================================
+   PARSE ARRAY TEXT
+
+   Accepts JSON-style arrays, optional trailing commas,
+   and JavaScript // comments.
+========================================================= */
+
+function parseArrayText(text) {
+
+    let cleaned = text;
+
+    cleaned = cleaned.replace(/\/\/[^\n\r]*/g, "");
+
+    cleaned = cleaned.replace(/,\s*]/g, "]");
+
+    return JSON.parse(cleaned);
+
+}
+
+
+/* =========================================================
+   APPLY PALETTE ARRAY
+========================================================= */
+
+function applyPaletteText() {
+
+    try {
+
+        const values = parseArrayText(paletteText.value);
+
+        if (!Array.isArray(values) || values.length === 0) {
+
+            throw new Error("Palette must be a nonempty array.");
+
+        }
+
+        for (const value of values) {
+
+            if (value !== null &&
+                (typeof value !== "string" ||
+                 !/^#[0-9a-fA-F]{6}$/.test(value))) {
+
+                throw new Error(
+                    "Colors must be #RRGGBB strings or null."
+                );
+
+            }
+
+        }
+
+        PALETTES[currentPaletteName] = values;
+
+        if (selectedColor >= values.length) {
+
+            selectedColor = 0;
+
+        }
+
+        renderPalette();
+        renderSprite();
+        updatePaletteText();
+
+        showStatus("Palette updated.");
+
+    } catch (error) {
+
+        alert("Invalid palette array:\n" + error.message);
+
+    }
+
+}
+
+
+/* =========================================================
+   APPLY SPRITE ARRAY
+========================================================= */
+
+function applySpriteText() {
+
+    try {
+
+        const values = parseArrayText(spriteText.value);
+
+        if (!Array.isArray(values) || values.length !== 64) {
+
+            throw new Error(
+                "Sprite must contain exactly 64 values."
+            );
+
+        }
+
+        const palette = getPalette();
+
+        for (const value of values) {
+
+            if (!Number.isInteger(value) ||
+                value < 0 ||
+                value >= palette.length) {
+
+                throw new Error(
+                    "Sprite values must be valid palette indices " +
+                    "(0 through " + (palette.length - 1) + ")."
+                );
+
+            }
+
+        }
+
+        sprite = values.slice();
+
+        renderSprite();
+
+        showStatus("Sprite updated.");
+
+    } catch (error) {
+
+        alert("Invalid sprite array:\n" + error.message);
+
+    }
+
+}
+
+
+/* =========================================================
+   COPY TEXT
+========================================================= */
+
+async function copyText(elementID) {
+
+    const element = document.getElementById(elementID);
+
+    try {
+
+        await navigator.clipboard.writeText(element.value);
+
+        showStatus("Copied to clipboard.");
+
+    } catch (error) {
+
+        element.focus();
+        element.select();
+
+        showStatus("Text selected. Press Ctrl+C or Cmd+C.");
+
+    }
+
+}
+
+
+/* =========================================================
+   STATUS
+========================================================= */
+
+function showStatus(message) {
+
+    statusElement.textContent = message;
+
+}
+
+
+/* =========================================================
+   INITIAL SPRITE
+
+   Example 8x8 sprite.
+========================================================= */
+
+sprite = [
+    0,0,2,2,0,0,0,0,
+    0,2,0,0,2,0,0,0,
+    2,0,0,0,0,2,0,0,
+    2,0,0,0,0,0,2,0,
+    2,0,0,0,0,2,0,0,
+    0,2,0,0,2,0,0,0,
+    0,0,2,2,0,0,0,0,
+    0,0,0,0,0,0,0,0
+];
+
+
+/* =========================================================
+   INITIALIZE EDITOR
+========================================================= */
+
+function initializeEditor() {
+
+    initializePaletteSelector();
+
+    initializeSpriteGrid();
+
+    renderPalette();
+
+    renderSprite();
+
+    updatePaletteText();
+
+}
+
+initializeEditor();
+
+</script>
+
+</body>
+</html>

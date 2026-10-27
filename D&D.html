@@ -1,0 +1,307 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="UTF-8">
+
+<title>Dungeon Explorer</title>
+
+<style>
+
+/* =========================================================
+   PAGE
+========================================================= */
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+
+    background: #080808;
+    color: #ddd;
+
+    font-family: Arial, sans-serif;
+}
+
+
+/* =========================================================
+   GAME DISPLAY
+========================================================= */
+
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/*canvas {
+    display: block;
+
+    background: #000;
+
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+
+    width: min(96vw, 96vh);
+    height: min(96vw, 96vh);
+
+    border: 2px solid #555;
+    box-shadow: 0 0 24px #000;
+}*/
+
+canvas {
+    border: 2px solid #777;
+    width: 800px;
+    height: auto;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+#gameContainer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+#dungeonControls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    background: #1b1b1b;
+    border: 1px solid #444;
+}
+
+#dungeonControls input,
+#dungeonControls select,
+#dungeonControls button {
+    background: #292929;
+    color: #eee;
+    border: 1px solid #555;
+    padding: 6px;
+}
+
+#seedInput {
+    width: 100px;
+}
+
+#helpCanvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1000;
+    display: none;
+    pointer-events: none;
+}
+</style>
+
+</head>
+
+<body>
+
+<div id="gameContainer">
+
+    <div id="dungeonControls">
+
+        <label>
+            Seed:
+            <input type="number" id="seedInput" value="12345">
+        </label>
+
+        <label>
+            Dungeon:
+            <select id="dungeonColor">
+                <option value="red">Red</option>
+                <option value="blue">Blue</option>
+                <option value="purple">Purple</option>
+                <option value="white">White</option>
+            </select>
+        </label>
+
+        <button onclick="regenerateDungeon()">
+            Regenerate
+        </button>
+
+        <button onclick="randomDungeonSeed()">
+            Random Seed
+        </button>
+
+    </div>
+
+<!-- =======================================================
+     GAME CANVAS
+======================================================= -->
+
+    <canvas id="game" width="160" height="96"></canvas>
+	<canvas id="helpCanvas"></canvas>
+</div>
+
+<!-- =======================================================
+     SOUND ENGINE
+======================================================= -->
+
+<script src="sound.js"></script>
+
+<script>
+
+/* =========================================================
+   DUNGEON CONFIGURATION
+========================================================= */
+
+const dungeonParams = new URLSearchParams(window.location.search);
+
+const GAME_SEED = Number(
+    dungeonParams.get("seed") ?? 12345
+);
+
+const GAME_DUNGEON_COLOR =
+    dungeonParams.get("color") || "red";
+
+
+/* =========================================================
+   INITIALIZE CONTROLS
+========================================================= */
+
+document.getElementById("seedInput").value = GAME_SEED;
+
+document.getElementById("dungeonColor").value =
+    GAME_DUNGEON_COLOR;
+
+
+/* =========================================================
+   REGENERATE DUNGEON
+========================================================= */
+
+function regenerateDungeon() {
+
+    const seed = document.getElementById("seedInput").value;
+
+    const color = document.getElementById("dungeonColor").value;
+
+    const url = new URL(window.location.href);
+
+    url.searchParams.set("seed", seed);
+    url.searchParams.set("color", color);
+
+    window.location.href = url.href;
+}
+
+
+/* =========================================================
+   RANDOM DUNGEON SEED
+========================================================= */
+
+function randomDungeonSeed() {
+
+    const seed = Math.floor(Math.random() * 2147483647) + 1;
+
+    document.getElementById("seedInput").value = seed;
+
+    regenerateDungeon();
+}
+
+</script>
+
+<!-- =======================================================
+     GENERATES DUNGEON CONTROL HELP SCREEN
+
+     help screen
+======================================================= -->
+<script src="dungeon_help.js"></script>
+
+<!-- =======================================================
+     GENERATES A RANDOM DUGEON LAYOUT
+
+     map generation
+======================================================= -->
+<script src="dungeon_visibility.js"></script>
+<script src="dungeon_generator.js"></script>
+
+<!-- =======================================================
+     GAME DEFINITIONS
+
+     Constants, blocks, rooms, sprites, dungeon layout,
+     objects, inventory icons and animation definitions.
+======================================================= -->
+<script src="dungeon_placement.js"></script>
+<script src="dungeon_definitions.js"></script>
+<script src="overworld_generator.js"></script>
+
+<!-- =======================================================
+     WORLD
+
+     Block decoding, room rotation, world terrain lookup.
+======================================================= -->
+
+<script src="dungeon_world.js"></script>
+
+<!-- =======================================================
+     CAMERA
+
+     Camera positioning and boundary constraints.
+======================================================= -->
+
+<script src="dungeon_camera.js"></script>
+
+
+<!-- =======================================================
+     RENDERING
+
+     Terrain, sprites, objects, player and screen drawing.
+======================================================= -->
+<script src="dungeon_render.js"></script>
+
+<!-- =======================================================
+     INVENTORY
+
+     Inventory panel and item icon rendering.
+======================================================= -->
+
+<script src="dungeon_inventory.js"></script>
+
+
+<!-- =======================================================
+     PLAYER
+
+     Player state, movement, collision and item pickup.
+======================================================= -->
+
+
+<script src="dungeon_player.js"></script>
+<script src="dungeon_projectiles.js"></script>
+<script src="monster_movement.js"></script>
+<script src="dungeon_entity_collision.js"></script>
+<!-- =======================================================
+     AUDIO
+
+     Monster proximity sounds.
+======================================================= -->
+
+<script src="dungeon_audio.js"></script>
+
+
+<!-- =======================================================
+     INPUT
+
+     Keyboard controls.
+======================================================= -->
+
+<script src="dungeon_input.js"></script>
+
+<!-- =======================================================
+     GAME
+
+     Initialization, animation and update timers.
+
+     Must load last.
+======================================================= -->
+<script src="dungeon_game.js"></script>
+
+</body>
+</html>

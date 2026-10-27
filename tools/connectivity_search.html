@@ -1,0 +1,482 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dungeon Room Placement Test</title>
+<style>
+body {
+    margin: 0;
+    background: #111;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    height: 100vh;
+}
+#panel {
+    background: #1c1c1c;
+    border-right: 1px solid #444;
+    padding: 16px;
+    overflow: auto;
+}
+h2 { margin-top: 0; font-size: 18px; }
+label { display: block; margin-top: 14px; }
+input, button {
+    width: 100%;
+    box-sizing: border-box;
+    background: #292929;
+    color: #eee;
+    border: 1px solid #555;
+    padding: 8px;
+    margin-top: 5px;
+}
+button { cursor: pointer; }
+button:hover { background: #383838; }
+canvas {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+}
+#view {
+    overflow: auto;
+    padding: 20px;
+}
+#status {
+    margin-top: 18px;
+    line-height: 1.7;
+    white-space: pre-line;
+}
+small { color: #aaa; }
+</style>
+</head>
+<body>
+
+<div id="panel">
+    <h2>Dungeon Generator</h2>
+
+    <label>Width (rooms)
+        <input id="width" type="number" min="1" max="100" value="12">
+    </label>
+    <label>Height (rooms)
+        <input id="height" type="number" min="1" max="100" value="8">
+    </label>
+    <label>Random Seed
+        <input id="seed" type="number" value="12345">
+    </label>
+
+    <button onclick="generate()">Generate Dungeon</button>
+    <button onclick="nextSeed()">Next Seed</button>
+
+    <div id="status"></div>
+    <p><small>
+        White gaps: exits<br>
+        Dark walls: blocked sides<br>
+        Green connections: traversable<br>
+        Red connections: mismatched exits<br>
+        Outer edges never wrap
+    </small></p>
+</div>
+
+<div id="view">
+    <canvas id="canvas"></canvas>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   DIRECTIONS
+
+   0 = NORTH
+   1 = EAST
+   2 = SOUTH
+   3 = WEST
+
+   Each room has one blocked direction.
+========================================================= */
+
+const DX = [0, 1, 0, -1];
+const DY = [-1, 0, 1, 0];
+
+const TILE = 60;
+const MARGIN = 15;
+
+let grid = [];
+let dungeonWidth = 0;
+let dungeonHeight = 0;
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+/* =========================================================
+   SEEDED RANDOM GENERATOR
+========================================================= */
+
+function createRandom(seed) {
+    let state = seed >>> 0;
+
+    return function() {
+        state = (state + 0x6D2B79F5) >>> 0;
+        let t = state;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+/* =========================================================
+   ROOM CONNECTIVITY
+========================================================= */
+
+function inside(x, y) {
+    return x >= 0 && y >= 0 &&
+           x < dungeonWidth && y < dungeonHeight;
+}
+
+function canTravel(x, y, dir) {
+    const nx = x + DX[dir];
+    const ny = y + DY[dir];
+
+    if (!inside(nx, ny)) return false;
+
+    const a = grid[y][x];
+    const b = grid[ny][nx];
+
+    return a.blocked !== dir &&
+           b.blocked !== ((dir + 2) % 4);
+}
+
+/* =========================================================
+   FIND CONNECTED COMPONENTS
+========================================================= */
+
+function findComponents() {
+    const visited = Array.from(
+        { length: dungeonHeight },
+        () => Array(dungeonWidth).fill(false)
+    );
+
+    const components = [];
+
+    for (let y = 0; y < dungeonHeight; y++) {
+        for (let x = 0; x < dungeonWidth; x++) {
+            if (visited[y][x]) continue;
+
+            const component = [];
+            const queue = [{ x, y }];
+            visited[y][x] = true;
+
+            for (let i = 0; i < queue.length; i++) {
+                const p = queue[i];
+                component.push(p);
+
+                for (let d = 0; d < 4; d++) {
+                    const nx = p.x + DX[d];
+                    const ny = p.y + DY[d];
+
+                    if (!inside(nx, ny) ||
+                        visited[ny][nx] ||
+                        !canTravel(p.x, p.y, d)) continue;
+
+                    visited[ny][nx] = true;
+                    queue.push({ x: nx, y: ny });
+                }
+            }
+
+            components.push(component);
+        }
+    }
+
+    return components;
+}
+
+/* =========================================================
+   CONNECTIVITY REPAIR
+
+   Find a boundary between two disconnected components.
+   Try all orientation combinations for the two rooms.
+   Accept only changes that reduce component count.
+
+   This preserves random orientations where possible.
+========================================================= */
+
+function repairConnectivity(random) {
+    let repairs = 0;
+    const maxIterations = dungeonWidth * dungeonHeight * 16;
+
+    for (let iteration = 0; iteration < maxIterations; iteration++) {
+        const components = findComponents();
+        if (components.length === 1) {
+            return { success: true, repairs };
+        }
+
+        const componentMap = Array.from(
+            { length: dungeonHeight },
+            () => Array(dungeonWidth).fill(-1)
+        );
+
+        components.forEach((component, index) => {
+            component.forEach(p => {
+                componentMap[p.y][p.x] = index;
+            });
+        });
+
+        const candidates = [];
+
+        for (let y = 0; y < dungeonHeight; y++) {
+            for (let x = 0; x < dungeonWidth; x++) {
+                for (let d = 1; d <= 2; d++) {
+                    const nx = x + DX[d];
+                    const ny = y + DY[d];
+
+                    if (!inside(nx, ny)) continue;
+                    if (componentMap[y][x] ===
+                        componentMap[ny][nx]) continue;
+
+                    candidates.push({ x, y, nx, ny, d });
+                }
+            }
+        }
+
+        // Randomize the candidate order.
+        for (let i = candidates.length - 1; i > 0; i--) {
+            const j = Math.floor(random() * (i + 1));
+            [candidates[i], candidates[j]] =
+                [candidates[j], candidates[i]];
+        }
+
+        let best = null;
+
+        for (const c of candidates) {
+            const a = grid[c.y][c.x];
+            const b = grid[c.ny][c.nx];
+            const oldA = a.blocked;
+            const oldB = b.blocked;
+
+            for (let da = 0; da < 4; da++) {
+                if (da === c.d) continue;
+
+                for (let db = 0; db < 4; db++) {
+                    if (db === (c.d + 2) % 4) continue;
+
+                    a.blocked = da;
+                    b.blocked = db;
+
+                    const count = findComponents().length;
+                    const changes =
+                        (da !== oldA ? 1 : 0) +
+                        (db !== oldB ? 1 : 0);
+
+                    if (count < components.length &&
+                        (!best ||
+                         count < best.count ||
+                         (count === best.count &&
+                          changes < best.changes))) {
+                        best = {
+                            c, da, db, count, changes
+                        };
+                    }
+                }
+            }
+
+            a.blocked = oldA;
+            b.blocked = oldB;
+
+            if (best && best.count === 1) break;
+        }
+
+        if (!best) {
+            return { success: false, repairs };
+        }
+
+        grid[best.c.y][best.c.x].blocked = best.da;
+        grid[best.c.ny][best.c.nx].blocked = best.db;
+        repairs++;
+    }
+
+    return { success: false, repairs };
+}
+
+/* =========================================================
+   GENERATE DUNGEON
+========================================================= */
+
+function generate() {
+    dungeonWidth = Math.max(1,
+        Math.min(100, Number(document.getElementById("width").value) || 1));
+    dungeonHeight = Math.max(1,
+        Math.min(100, Number(document.getElementById("height").value) || 1));
+
+    const seed = Number(document.getElementById("seed").value) || 0;
+    const random = createRandom(seed);
+
+    grid = [];
+
+    for (let y = 0; y < dungeonHeight; y++) {
+        const row = [];
+
+        for (let x = 0; x < dungeonWidth; x++) {
+            row.push({
+                room: Math.floor(random() * 256),
+                blocked: Math.floor(random() * 4)
+            });
+        }
+
+        grid.push(row);
+    }
+
+    const result = repairConnectivity(random);
+    const components = findComponents();
+
+    drawDungeon();
+
+    document.getElementById("status").textContent =
+        "Rooms: " + dungeonWidth * dungeonHeight +
+        "\nConnected groups: " + components.length +
+        "\nOrientation repairs: " + result.repairs +
+        "\nConnectivity: " +
+        (result.success ? "PASS" : "FAILED") +
+        "\nSeed: " + seed;
+}
+
+function nextSeed() {
+    const input = document.getElementById("seed");
+    input.value = (Number(input.value) || 0) + 1;
+    generate();
+}
+
+/* =========================================================
+   DRAW DUNGEON
+========================================================= */
+
+function drawDungeon() {
+    canvas.width = dungeonWidth * TILE + MARGIN * 2;
+    canvas.height = dungeonHeight * TILE + MARGIN * 2;
+
+    ctx.fillStyle = "#101010";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (let y = 0; y < dungeonHeight; y++) {
+        for (let x = 0; x < dungeonWidth; x++) {
+            drawRoom(x, y);
+        }
+    }
+
+    // Draw connections between neighboring rooms.
+    for (let y = 0; y < dungeonHeight; y++) {
+        for (let x = 0; x < dungeonWidth; x++) {
+            for (const d of [1, 2]) {
+                const nx = x + DX[d];
+                const ny = y + DY[d];
+                if (!inside(nx, ny)) continue;
+
+                const connected = canTravel(x, y, d);
+
+                const cx = MARGIN + x * TILE + TILE / 2;
+                const cy = MARGIN + y * TILE + TILE / 2;
+                const tx = MARGIN + nx * TILE + TILE / 2;
+                const ty = MARGIN + ny * TILE + TILE / 2;
+
+                ctx.strokeStyle = connected ?
+                    "rgba(80,220,110,0.5)" :
+                    "rgba(240,70,70,0.5)";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(tx, ty);
+                ctx.stroke();
+            }
+        }
+    }
+
+    // Draw room labels above connection lines.
+    for (let y = 0; y < dungeonHeight; y++) {
+        for (let x = 0; x < dungeonWidth; x++) {
+            const room = grid[y][x];
+            const cx = MARGIN + x * TILE + TILE / 2;
+            const cy = MARGIN + y * TILE + TILE / 2;
+
+            ctx.fillStyle = "#eee";
+            ctx.font = "11px monospace";
+            ctx.textAlign = "center";
+            ctx.fillText(room.room, cx, cy + 4);
+        }
+    }
+}
+
+function drawRoom(x, y) {
+    const room = grid[y][x];
+
+    const px = MARGIN + x * TILE;
+    const py = MARGIN + y * TILE;
+    const gap = 16;
+
+    ctx.fillStyle = "#272727";
+    ctx.fillRect(px + 2, py + 2, TILE - 4, TILE - 4);
+
+    ctx.strokeStyle = "#aaa";
+    ctx.lineWidth = 4;
+
+    for (let d = 0; d < 4; d++) {
+        const blocked = room.blocked === d;
+
+        ctx.beginPath();
+
+        if (d === 0) {
+            if (blocked) {
+                ctx.moveTo(px, py);
+                ctx.lineTo(px + TILE, py);
+            } else {
+                ctx.moveTo(px, py);
+                ctx.lineTo(px + (TILE-gap)/2, py);
+                ctx.moveTo(px + (TILE+gap)/2, py);
+                ctx.lineTo(px + TILE, py);
+            }
+        }
+
+        if (d === 1) {
+            if (blocked) {
+                ctx.moveTo(px + TILE, py);
+                ctx.lineTo(px + TILE, py + TILE);
+            } else {
+                ctx.moveTo(px + TILE, py);
+                ctx.lineTo(px + TILE, py + (TILE-gap)/2);
+                ctx.moveTo(px + TILE, py + (TILE+gap)/2);
+                ctx.lineTo(px + TILE, py + TILE);
+            }
+        }
+
+        if (d === 2) {
+            if (blocked) {
+                ctx.moveTo(px, py + TILE);
+                ctx.lineTo(px + TILE, py + TILE);
+            } else {
+                ctx.moveTo(px, py + TILE);
+                ctx.lineTo(px + (TILE-gap)/2, py + TILE);
+                ctx.moveTo(px + (TILE+gap)/2, py + TILE);
+                ctx.lineTo(px + TILE, py + TILE);
+            }
+        }
+
+        if (d === 3) {
+            if (blocked) {
+                ctx.moveTo(px, py);
+                ctx.lineTo(px, py + TILE);
+            } else {
+                ctx.moveTo(px, py);
+                ctx.lineTo(px, py + (TILE-gap)/2);
+                ctx.moveTo(px, py + (TILE+gap)/2);
+                ctx.lineTo(px, py + TILE);
+            }
+        }
+
+        ctx.stroke();
+    }
+}
+
+generate();
+
+</script>
+</body>
+</html>

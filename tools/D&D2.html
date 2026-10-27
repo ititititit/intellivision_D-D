@@ -1,0 +1,1966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Numeric Dungeon Test</title>
+
+<style>
+html, body {
+    margin: 0;
+    height: 100%;
+    background: #111;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#wrap {
+    text-align: center;
+}
+
+canvas {
+    border: 2px solid #777;
+
+    /*
+        Actual canvas:
+            20 x 12 blocks
+            8 pixels per block
+
+        Displayed 5x larger.
+    */
+    width: 800px;
+    height: 480px;
+
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+#info {
+    margin-top: 10px;
+    color: #aaa;
+}
+</style>
+</head>
+
+<body>
+
+<div id="wrap">
+
+<canvas
+    id="game"
+    width="160"
+    height="96">
+</canvas>
+
+<div id="info">
+    WASD = scroll
+</div>
+
+</div>
+<script src="dungeon_definitions.js"></script>
+<script src="sound.js"></script>
+<script>
+"use strict";
+
+
+/* =========================================================
+   ORIENTATION
+
+   Stored in 2 bits.
+
+       0 = NORTH
+       1 = EAST
+       2 = SOUTH
+       3 = WEST
+========================================================= */
+
+const N = 0;
+const E = 1;
+const S = 2;
+const W = 3;
+
+
+/* =========================================================
+   BLOCK COLOR DEFINITIONS
+
+   The numbers inside a block are COLOR IDs.
+
+   Each block is an 8x8 pixel image.
+
+       0 = wall
+       1 = floor
+
+   More colors can simply be added here.
+========================================================= */
+
+const COLORS = [
+
+    "#3f7d4a",     // 0 wall
+    "#b99a68"      // 1 floor
+];
+
+
+/* =========================================================
+   BLOCK DEFINITIONS
+
+   Each block is an 8x8 array of COLOR numbers.
+
+   BLOCK 0 = solid wall
+   BLOCK 1 = solid floor
+   BLOCK 2 = diagonal wall/floor
+
+   The diagonal block is defined facing NORTH.
+
+   Orientation stored in the ROOM determines how this
+   8x8 pixel pattern is rotated.
+========================================================= */
+
+const BLOCKS = [
+
+/* ---------------------------------------------------------
+   BLOCK 0
+   SOLID WALL
+--------------------------------------------------------- */
+
+[
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0
+],
+
+/* ---------------------------------------------------------
+   BLOCK 1
+   SOLID FLOOR
+--------------------------------------------------------- */
+
+[
+    1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1
+],
+
+/* ---------------------------------------------------------
+   BLOCK 2
+   DIAGONAL
+
+   Canonical orientation = NORTH
+
+   Rotation gives the other diagonal directions.
+--------------------------------------------------------- */
+
+[
+    0,0,0,0,0,0,0,1,
+    0,0,0,0,0,0,1,1,
+    0,0,0,0,0,1,1,1,
+    0,0,0,0,1,1,1,1,
+    0,0,0,1,1,1,1,1,
+    0,0,1,1,1,1,1,1,
+    0,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1
+]
+
+];
+
+
+/* =========================================================
+   SPRITE COLORS
+
+   Sprites are also 8x8 pixels.
+
+   0 = transparent
+   Other numbers index this palette.
+========================================================= */
+
+const SPRITE_COLORS = [
+    null,       // 0 transparent
+    "#d8d0a0",  // 1 bone / light
+    "#6b4423",  // 2 brown
+    "#d8b030",  // 3 gold
+    "#b8b8b8",  // 4 steel
+    "#202020",  // 5 black
+    "#8b2020",  // 6 dark red
+    "#65a84a",  // 7 green
+    "#eeeeee",  // 8 white
+    "#704090",  // 9 purple
+    "#d06030"   // 10 orange
+];
+
+
+/* =========================================================
+   SPRITE IDS
+========================================================= */
+
+const SPRITE = {
+
+    LADDER: 0,
+    BOW: 1,
+    QUIVER: 2,
+    SWORD: 3,
+    KEY: 4,
+    CROWN: 5,
+    BOAT: 6,
+
+    SNAKE_1: 7,
+    SNAKE_2: 8,
+
+    DEMON_1: 9,
+    DEMON_2: 10,
+
+    BAT_1: 11,
+    BAT_2: 12,
+
+    DRAGON_1: 13,
+    DRAGON_2: 14,
+    
+    SKULL_1: 15,
+	SKULL_2: 16,
+	SKULL_HORNS: 17,
+	BONES: 18,
+	CABIN: 19,
+	MOUNTAIN_1: 20,
+	MOUNTAIN_2: 21,
+	RIVER_1: 22,
+	RIVER_2: 23,
+	AXE: 24,
+	FOREST: 25,
+    
+	PLAYER_1: 26,
+	PLAYER_2: 27,
+	
+	PLAYER_BOW_1: 28,
+	PLAYER_BOW_2: 29,
+	
+	PLAYER_SWORD_1: 30,
+	PLAYER_SWORD_2: 31
+};
+
+
+/* =========================================================
+   SPRITES
+
+   Each sprite is an 8x8 array.
+
+   0 = transparent
+========================================================= */
+
+const SPRITES = [
+
+/* 0 LADDER */
+[
+    0,2,0,0,0,0,2,0,
+    0,2,0,0,0,0,2,0,
+    0,2,2,2,2,2,2,0,
+    0,2,0,0,0,0,2,0,
+    0,2,2,2,2,2,2,0,
+    0,2,0,0,0,0,2,0,
+    0,2,2,2,2,2,2,0,
+    0,2,0,0,0,0,2,0
+],
+
+/* 1 BOW */
+[
+    0,0,2,2,0,0,0,0,
+    0,2,0,0,2,0,0,0,
+    2,0,0,0,0,2,0,0,
+    2,0,0,0,0,0,2,0,
+    2,0,0,0,0,2,0,0,
+    0,2,0,0,2,0,0,0,
+    0,0,2,2,0,0,0,0,
+    0,0,0,0,0,0,0,0
+],
+
+/* 2 QUIVER */
+[
+    0,0,1,0,1,0,0,0,
+    0,0,1,0,1,0,0,0,
+    0,0,1,1,1,0,0,0,
+    0,2,2,2,2,0,0,0,
+    0,2,3,3,2,0,0,0,
+    0,2,3,3,2,0,0,0,
+    0,0,2,2,0,0,0,0,
+    0,0,2,0,0,0,0,0
+],
+
+/* 3 SWORD */
+[
+    0,0,0,0,4,0,0,0,
+    0,0,0,4,4,0,0,0,
+    0,0,4,4,0,0,0,0,
+    0,4,4,0,0,0,0,0,
+    4,4,0,0,0,0,0,0,
+    0,3,3,0,0,0,0,0,
+    0,0,2,0,0,0,0,0,
+    0,0,0,0,0,0,0,0
+],
+
+/* 4 KEY */
+[
+    0,0,3,3,0,0,0,0,
+    0,3,0,0,3,0,0,0,
+    0,3,0,0,3,0,0,0,
+    0,0,3,3,3,3,3,0,
+    0,0,0,0,0,3,0,0,
+    0,0,0,0,0,3,3,0,
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0
+],
+
+/* 5 CROWN */
+[
+    0,0,0,0,0,0,0,0,
+    0,3,0,3,0,3,0,0,
+    0,3,3,3,3,3,0,0,
+    0,3,3,3,3,3,0,0,
+    0,3,3,3,3,3,0,0,
+    0,0,3,3,3,0,0,0,
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0
+],
+
+/* 6 BOAT */
+[
+    0,0,0,2,0,0,0,0,
+    0,0,0,2,8,0,0,0,
+    0,0,0,2,8,8,0,0,
+    0,0,0,2,8,8,8,0,
+    0,0,0,2,0,0,0,0,
+    0,2,2,2,2,2,2,0,
+    0,0,2,2,2,2,0,0,
+    0,0,0,0,0,0,0,0
+],
+
+/* 7 GIANT SNAKE FRAME 1 */
+[
+    0,0,0,0,7,7,0,0,
+    0,0,0,7,5,7,0,0,
+    0,0,0,7,7,0,0,0,
+    0,0,7,7,0,0,0,0,
+    0,7,7,0,0,7,7,0,
+    7,7,0,0,7,7,0,0,
+    0,7,7,7,7,0,0,0,
+    0,0,0,0,0,0,0,0
+],
+
+/* 8 GIANT SNAKE FRAME 2 */
+[
+    0,0,7,7,0,0,0,0,
+    0,0,7,5,7,0,0,0,
+    0,0,0,7,7,0,0,0,
+    0,0,0,0,7,7,0,0,
+    0,7,7,0,0,7,7,0,
+    0,0,7,7,0,0,7,7,
+    0,0,0,7,7,7,7,0,
+    0,0,0,0,0,0,0,0
+],
+
+/* 9 DEMON FRAME 1 */
+[
+    6,0,0,0,0,0,0,6,
+    0,6,6,6,6,6,6,0,
+    0,6,8,6,6,8,6,0,
+    0,6,6,5,5,6,6,0,
+    0,0,6,6,6,6,0,0,
+    0,6,6,6,6,6,6,0,
+    6,0,6,0,0,6,0,6,
+    0,0,6,0,0,6,0,0
+],
+
+/* 10 DEMON FRAME 2 */
+[
+    0,6,0,0,0,0,6,0,
+    6,6,6,6,6,6,6,6,
+    0,6,8,6,6,8,6,0,
+    0,6,6,5,5,6,6,0,
+    0,0,6,6,6,6,0,0,
+    6,6,6,6,6,6,6,6,
+    0,0,6,0,0,6,0,0,
+    0,6,0,0,0,0,6,0
+],
+
+/* 11 BAT FRAME 1 */
+[
+    0,0,0,0,0,0,0,0,
+    5,5,0,0,0,0,5,5,
+    0,5,5,0,0,5,5,0,
+    0,0,5,5,5,5,0,0,
+    0,0,5,8,8,5,0,0,
+    0,0,0,5,5,0,0,0,
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0
+],
+
+/* 12 BAT FRAME 2 */
+[
+    0,0,0,0,0,0,0,0,
+    0,0,5,0,0,5,0,0,
+    0,5,5,5,5,5,5,0,
+    5,5,0,5,5,0,5,5,
+    0,0,5,8,8,5,0,0,
+    0,0,0,5,5,0,0,0,
+    0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0
+],
+
+/* 13 DRAGON FRAME 1 */
+[
+    0,0,7,0,0,0,7,0,
+    0,7,7,7,0,7,7,7,
+    7,7,3,7,7,7,3,7,
+    0,7,7,7,7,7,7,0,
+    0,0,7,5,5,7,0,0,
+    0,7,7,7,7,7,7,0,
+    7,7,0,7,7,0,7,7,
+    0,0,0,7,7,0,0,0
+],
+
+/* 14 DRAGON FRAME 2 */
+[
+    7,0,0,0,0,0,0,7,
+    7,7,7,0,0,7,7,7,
+    0,7,3,7,7,3,7,0,
+    0,7,7,7,7,7,7,0,
+    0,0,7,5,5,7,0,0,
+    7,7,7,7,7,7,7,7,
+    0,0,7,7,7,7,0,0,
+    0,0,7,0,0,7,0,0
+],
+
+/* =========================================================
+   15 SKULL 1
+========================================================= */
+
+[
+    0,0,1,1,1,1,0,0,
+    0,1,1,1,1,1,1,0,
+    0,1,5,1,1,5,1,0,
+    0,1,1,1,1,1,1,0,
+    0,0,1,5,5,1,0,0,
+    0,0,1,1,1,1,0,0,
+    0,0,1,0,0,1,0,0,
+    0,0,0,0,0,0,0,0
+],
+
+/* =========================================================
+   16 SKULL 2
+
+   Narrower / more elongated skull.
+========================================================= */
+
+[
+    0,0,0,1,1,0,0,0,
+    0,0,1,1,1,1,0,0,
+    0,1,1,1,1,1,1,0,
+    0,1,5,1,1,5,1,0,
+    0,1,1,5,5,1,1,0,
+    0,0,1,1,1,1,0,0,
+    0,0,1,5,5,1,0,0,
+    0,0,0,0,0,0,0,0
+],
+
+/* =========================================================
+   17 HORNED SKULL
+========================================================= */
+
+[
+    2,0,0,0,0,0,0,2,
+    2,2,0,1,1,0,2,2,
+    0,2,1,1,1,1,2,0,
+    0,1,1,1,1,1,1,0,
+    0,1,5,1,1,5,1,0,
+    0,0,1,5,5,1,0,0,
+    0,0,1,1,1,1,0,0,
+    0,0,1,0,0,1,0,0
+],
+
+/* =========================================================
+   18 BONES
+========================================================= */
+
+[
+    1,1,0,0,0,0,1,1,
+    0,1,1,0,0,1,1,0,
+    0,0,1,1,1,1,0,0,
+    0,0,0,1,1,0,0,0,
+    0,0,0,1,1,0,0,0,
+    0,0,1,1,1,1,0,0,
+    0,1,1,0,0,1,1,0,
+    1,1,0,0,0,0,1,1
+],
+
+/* =========================================================
+   19 CABIN
+========================================================= */
+
+[
+    0,0,2,2,2,2,0,0,
+    0,2,2,2,2,2,2,0,
+    2,2,2,2,2,2,2,2,
+    0,2,2,2,2,2,2,0,
+    0,2,1,2,2,1,2,0,
+    0,2,1,2,2,1,2,0,
+    0,2,2,2,2,2,2,0,
+    0,2,2,5,5,2,2,0
+],
+
+/* =========================================================
+   20 MOUNTAIN 1
+========================================================= */
+
+[
+    0,0,0,4,0,0,0,0,
+    0,0,4,4,4,0,0,0,
+    0,0,4,8,4,0,0,0,
+    0,4,8,8,4,4,0,0,
+    0,4,4,4,4,4,0,0,
+    4,4,4,4,4,4,4,0,
+    4,4,4,4,4,4,4,4,
+    0,0,0,0,0,0,0,0
+],
+
+/* =========================================================
+   21 MOUNTAIN 2
+========================================================= */
+
+[
+    0,0,0,0,4,0,0,0,
+    0,0,0,4,4,4,0,0,
+    0,4,0,4,8,4,0,0,
+    4,4,4,8,8,4,4,0,
+    4,8,4,4,4,4,4,0,
+    4,4,4,4,4,4,4,4,
+    4,4,4,4,4,4,4,4,
+    0,0,0,0,0,0,0,0
+],
+
+/* =========================================================
+   22 WANDERING RIVER 1
+
+   Intended as a map/terrain symbol.
+========================================================= */
+
+[
+    0,0,0,8,8,0,0,0,
+    0,0,8,8,0,0,0,0,
+    0,8,8,0,0,0,0,0,
+    0,8,0,0,0,0,0,0,
+    0,8,8,0,0,0,0,0,
+    0,0,8,8,8,0,0,0,
+    0,0,0,0,8,8,0,0,
+    0,0,0,0,0,8,8,0
+],
+
+/* =========================================================
+   23 WANDERING RIVER 2
+========================================================= */
+
+[
+    0,0,8,8,0,0,0,0,
+    0,0,0,8,8,0,0,0,
+    0,0,0,0,8,8,0,0,
+    0,0,0,0,0,8,0,0,
+    0,0,0,0,8,8,0,0,
+    0,0,8,8,8,0,0,0,
+    0,8,8,0,0,0,0,0,
+    8,8,0,0,0,0,0,0
+],
+
+/* =========================================================
+   24 AXE
+========================================================= */
+
+[
+    0,0,0,0,4,4,0,0,
+    0,0,0,4,4,4,4,0,
+    0,0,0,4,4,4,0,0,
+    0,0,2,2,4,0,0,0,
+    0,2,2,0,0,0,0,0,
+    2,2,0,0,0,0,0,0,
+    2,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0
+],
+
+/* =========================================================
+   25 FOREST
+========================================================= */
+
+[
+    0,0,7,0,0,7,0,0,
+    0,7,7,7,7,7,7,0,
+    7,7,7,7,7,7,7,7,
+    0,7,7,7,7,7,7,0,
+    0,0,7,0,0,7,0,0,
+    0,7,7,7,7,7,7,0,
+    7,7,2,7,7,2,7,7,
+    0,0,2,0,0,2,0,0
+],
+
+/* =========================================================
+   26 PLAYER - WALK FRAME 1
+========================================================= */
+[
+    0,0,1,1,1,1,0,0,
+    0,0,1,5,5,1,0,0,
+    0,0,0,1,1,0,0,0,
+    0,0,9,9,9,9,0,0,
+    0,1,9,9,9,9,1,0,
+    0,0,9,9,9,9,0,0,
+    0,0,2,0,0,2,0,0,
+    0,2,2,0,0,2,2,0
+],
+
+/* =========================================================
+   27 PLAYER - WALK FRAME 2
+========================================================= */
+[
+    0,0,1,1,1,1,0,0,
+    0,0,1,5,5,1,0,0,
+    0,0,0,1,1,0,0,0,
+    0,0,9,9,9,9,0,0,
+    0,1,9,9,9,9,1,0,
+    0,0,9,9,9,9,0,0,
+    0,0,0,2,2,0,0,0,
+    0,0,2,0,0,2,0,0
+],
+
+/* =========================================================
+   28 PLAYER WITH BOW - FRAME 1
+========================================================= */
+[
+    0,0,1,1,1,1,0,2,
+    0,0,1,5,5,1,2,0,
+    0,0,0,1,1,0,2,0,
+    0,0,9,9,9,2,0,0,
+    0,1,9,9,9,2,0,0,
+    0,0,9,9,9,2,0,0,
+    0,0,2,0,0,2,2,0,
+    0,2,2,0,0,2,0,0
+],
+
+/* =========================================================
+   29 PLAYER WITH BOW - FRAME 2
+
+   Bow drawn / aiming.
+========================================================= */
+[
+    0,0,1,1,1,1,0,2,
+    0,0,1,5,5,1,2,0,
+    0,0,0,1,1,0,2,0,
+    0,0,9,9,9,2,4,0,
+    0,1,9,9,9,2,4,4,
+    0,0,9,9,9,2,4,0,
+    0,0,0,2,2,0,2,0,
+    0,0,2,0,0,2,0,2
+],
+
+/* =========================================================
+   30 PLAYER WITH SWORD - FRAME 1
+
+   Sword held upright.
+========================================================= */
+[
+    0,0,1,1,1,1,0,4,
+    0,0,1,5,5,1,0,4,
+    0,0,0,1,1,0,0,4,
+    0,0,9,9,9,9,3,4,
+    0,1,9,9,9,9,3,0,
+    0,0,9,9,9,9,0,0,
+    0,0,2,0,0,2,0,0,
+    0,2,2,0,0,2,2,0
+],
+
+/* =========================================================
+   31 PLAYER WITH SWORD - FRAME 2
+
+   Sword swinging outward.
+========================================================= */
+[
+    0,0,1,1,1,1,0,0,
+    0,0,1,5,5,1,0,0,
+    0,0,0,1,1,0,0,0,
+    0,0,9,9,9,9,3,4,
+    0,1,9,9,9,9,4,4,
+    0,0,9,9,9,9,3,4,
+    0,0,0,2,2,0,0,0,
+    0,0,2,0,0,2,0,0
+]
+];
+
+
+/* =========================================================
+   ANIMATIONS
+
+   An animation is simply a list of sprite IDs.
+========================================================= */
+
+const ANIMATION = {
+
+    SNAKE:  [SPRITE.SNAKE_1,  SPRITE.SNAKE_2],
+    DEMON:  [SPRITE.DEMON_1,  SPRITE.DEMON_2],
+    BAT:    [SPRITE.BAT_1,    SPRITE.BAT_2],
+    DRAGON: [SPRITE.DRAGON_1, SPRITE.DRAGON_2],
+    
+    PLAYER: [SPRITE.PLAYER_1, SPRITE.PLAYER_2],
+	PLAYER_BOW: [SPRITE.PLAYER_BOW_1, SPRITE.PLAYER_BOW_2],
+	PLAYER_SWORD: [SPRITE.PLAYER_SWORD_1, SPRITE.PLAYER_SWORD_2]
+};
+
+/* =========================================================
+   ROOM CELL ENCODING
+
+   8 bit value:
+
+       bits 0-5 = block ID
+       bits 6-7 = orientation
+
+       OO BBBBBB
+
+   examples:
+
+       1
+
+       block 1
+       orientation N
+
+
+       65
+
+       64 + 1
+
+       block 1
+       orientation E
+
+
+       130
+
+       128 + 2
+
+       block 2
+       orientation S
+
+
+   Helper is only here to make room definitions easier
+   to read while designing.
+========================================================= */
+
+function B(block, orientation = N) {
+
+    return (
+        (block & 63) |
+        ((orientation & 3) << 6)
+    );
+}
+
+
+/* =========================================================
+   ROOM DEFINITIONS
+
+   Each room is 8x8 BLOCKS.
+
+   These are the actual numeric room definitions.
+
+   Room IDs are their array indexes:
+
+       room 0
+       room 1
+       ...
+       room 8
+
+========================================================= */
+
+const ROOMS = [
+
+    // ROOM 0
+    [
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,1,1,1,0,0,0,
+        0,1,1,1,1,1,1,1,1,
+        0,1,0,1,1,0,0,0,0,
+        0,1,1,0,0,0,0,0,0,
+        0,1,1,1,1,0,0,0,0,
+        0,0,0,1,1,0,0,0,0
+    ],
+
+    // ROOM 1
+    [
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,1,1,1,0,0,0,
+        0,1,1,1,1,1,1,1,1,
+        0,1,0,1,1,0,0,0,0,
+        0,1,1,0,0,0,0,0,0,
+        0,1,1,1,1,0,0,0,0,
+        0,0,0,1,1,0,0,0,0
+    ],
+
+    // ROOM 2
+    [
+        0,0,0,1,1,1,0,0,0,
+        0,1,1,1,1,1,1,1,0,
+        0,1,0,1,1,0,1,1,0,
+        0,1,1,1,1,1,0,1,0,
+        0,1,1,1,1,1,0,1,1,
+        0,0,0,1,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0
+    ],
+
+    // ROOM 3
+    [
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,1,1,1,0,0,0,
+        0,0,0,1,1,1,0,0,0,
+        0,0,0,1,1,1,0,0,0,
+        0,0,0,1,1,1,1,1,1,
+        0,0,0,1,1,1,0,0,0,
+        0,0,0,1,1,1,0,0,0,
+        0,0,0,1,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0
+    ],
+
+    // ROOM 4
+    [
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,1,1,1,0,0,0,
+        0,0,0,1,1,1,1,1,1,
+        0,0,0,1,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0
+    ],
+
+    // ROOM 5
+    [
+        0,0,0,1,1,1,0,0,0,
+        0,0,0,1,1,1,1,1,0,
+        0,0,0,1,1,0,1,1,0,
+        0,0,0,1,1,1,0,1,1,
+        0,1,1,1,1,1,0,1,1,
+        0,1,0,1,1,0,0,0,0,
+        0,1,1,0,0,0,0,0,0,
+        0,1,1,1,1,0,0,0,0,
+        0,0,0,1,1,0,0,0,0
+    ],
+
+    // ROOM 6
+    [
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,1,1,1,0,0,0,
+        0,0,1,1,1,1,1,0,0,
+        0,0,1,1,1,1,1,1,0,
+        0,0,1,1,1,1,1,1,1,
+        0,0,1,1,1,1,1,1,0,
+        0,0,1,1,1,1,1,0,0,
+        0,0,0,1,1,1,0,0,0,
+        0,0,0,0,1,0,0,0,0
+    ],
+
+    // ROOM 7
+    [
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,B(2,N),1,B(2,E),0,0,0,
+        0,0,B(2,N),1,1,1,B(2,E),0,0,
+        0,0,1,1,1,1,1,1,0,
+        0,0,1,1,1,1,1,1,1,
+        0,0,1,1,1,1,1,0,0,
+        0,0,B(2,W),1,1,1,1,0,0,
+        0,0,0,B(2,W),1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0
+    ],
+
+    // ROOM 8
+    [
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,1,1,1,0,0,0,
+        0,0,1,1,1,1,1,0,0,
+        0,0,1,1,1,1,1,1,0,
+        0,0,1,1,1,1,1,1,1,
+        0,0,1,1,1,1,1,0,0,
+        0,0,1,1,1,1,1,0,0,
+        0,0,0,1,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0
+    ],
+
+    // ROOM 9
+    [
+        0,0,0,0,1,0,0,0,0,
+        0,0,0,1,1,1,0,0,0,
+        0,0,1,1,1,1,1,0,0,
+        0,0,1,1,1,1,1,1,0,
+        0,0,1,1,1,1,1,1,1,
+        0,0,1,1,1,1,1,0,0,
+        0,0,1,1,1,1,1,0,0,
+        0,0,0,1,1,0,0,0,0,
+        0,0,0,0,1,0,0,0,0
+    ]
+
+];
+
+/* =========================================================
+   ROOM 1
+========================================================= 
+
+[
+    0,0,0,1,1,0,0,0,
+    0,0,B(2,N),1,1,B(2,E),0,0,
+    0,B(2,N),1,1,1,1,B(2,E),0,
+    1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,
+    0,B(2,W),1,1,1,1,B(2,S),0,
+    0,0,B(2,W),1,1,B(2,S),0,0,
+    0,0,0,0,0,0,0,0
+],
+*/
+
+
+/* =========================================================
+   DUNGEON ENCODING
+
+   6 bit value:
+
+       bits 0-3 = room ID
+       bits 4-5 = orientation
+
+       OO RRRR
+
+   Therefore:
+
+       0-15   = north
+       16-31  = east
+       32-47  = south
+       48-63  = west
+
+========================================================= */
+
+function R(room, orientation = N) {
+
+    return (
+        (room & 15) |
+        ((orientation & 3) << 4)
+    );
+}
+
+/* =========================================================
+   DUNGEON
+
+   12 rooms wide
+   4 rooms high
+
+   Again -- just numeric data.
+
+   R() is only shorthand for encoding the number.
+
+   R(3,E) for example is literally:
+
+       3 | (1 << 4)
+
+       = 19
+========================================================= */
+
+const DUNGEON = [
+
+[
+    R(0,E), R(1,N), R(2,W), R(3,S),
+    R(4,E), R(5,N), R(6,W), R(7,S),
+    R(8,E), R(1,S), R(3,W), R(5,N)
+],
+
+[
+    R(2,N), R(4,W), R(6,S), R(8,E),
+    R(0,S), R(3,E), R(5,W), R(7,N),
+    R(1,E), R(4,S), R(6,N), R(8,W)
+],
+
+[
+    R(7,E), R(6,N), R(5,S), R(4,W),
+    R(3,N), R(2,E), R(1,W), R(0,S),
+    R(8,N), R(7,W), R(6,E), R(5,S)
+],
+
+[
+    R(4,S), R(3,E), R(2,N), R(1,W),
+    R(0,E), R(8,S), R(7,N), R(6,W),
+    R(5,E), R(4,N), R(3,S), R(2,W)
+]
+
+];
+
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
+const BLOCK_PIXELS = 8;
+
+const ROOM_BLOCKS = 9;
+
+const DUNGEON_W = 12;
+const DUNGEON_H = 4;
+
+const WORLD_W =
+    DUNGEON_W * ROOM_BLOCKS;
+
+const WORLD_H =
+    DUNGEON_H * ROOM_BLOCKS;
+
+const VIEW_W = 20;
+const VIEW_H = 12;
+
+
+/* =========================================================
+   CANVAS
+========================================================= */
+
+const canvas =
+    document.getElementById("game");
+
+const ctx =
+    canvas.getContext("2d");
+
+ctx.imageSmoothingEnabled = false;
+
+
+/* =========================================================
+   DECODE ROOM BLOCK
+========================================================= */
+
+function decodeBlock(value) {
+
+    return {
+
+        block:
+            value & 63,
+
+        orientation:
+            (value >> 6) & 3
+    };
+}
+
+
+/* =========================================================
+   DECODE DUNGEON ROOM
+========================================================= */
+
+function decodeRoom(value) {
+
+    return {
+
+        room:
+            value & 15,
+
+        orientation:
+            (value >> 4) & 3
+    };
+}
+
+
+/* =========================================================
+   ROTATE COORDINATE
+
+   Rotates coordinate inside an 8x8 square.
+
+   orientation:
+
+       N = unchanged
+       E = 90 clockwise
+       S = 180
+       W = 270 clockwise
+========================================================= */
+
+function rotateXY(x, y, orientation) {
+
+    switch (orientation) {
+
+        case E:
+            return {
+                x: 7 - y,
+                y: x
+            };
+
+        case S:
+            return {
+                x: 7 - x,
+                y: 7 - y
+            };
+
+        case W:
+            return {
+                x: y,
+                y: 7 - x
+            };
+
+        default:
+            return {
+                x: x,
+                y: y
+            };
+    }
+}
+
+
+/* =========================================================
+   GET PIXEL FROM BLOCK
+
+   The block itself is rotated according to the
+   orientation stored in the ROOM cell.
+========================================================= */
+
+function getBlockPixel(
+    blockID,
+    orientation,
+    x,
+    y
+) {
+
+    /*
+        To draw a rotated image we reverse-map the
+        destination pixel into the source block.
+    */
+
+    let sx = x;
+    let sy = y;
+
+    switch (orientation) {
+
+        case E:
+            sx = y;
+            sy = 7 - x;
+            break;
+
+        case S:
+            sx = 7 - x;
+            sy = 7 - y;
+            break;
+
+        case W:
+            sx = 7 - y;
+            sy = x;
+            break;
+    }
+
+    return BLOCKS[blockID][
+        sy * 8 + sx
+    ];
+}
+
+
+/* =========================================================
+   DRAW ONE BLOCK
+
+   bx/by = screen block coordinate
+
+   value = encoded ROOM cell
+========================================================= */
+
+function drawBlock(value, bx, by) {
+
+    const decoded =
+        decodeBlock(value);
+
+    const px =
+        bx * BLOCK_PIXELS;
+
+    const py =
+        by * BLOCK_PIXELS;
+
+
+    for (let y = 0; y < 8; y++) {
+
+        for (let x = 0; x < 8; x++) {
+
+            const colorID =
+                getBlockPixel(
+                    decoded.block,
+                    decoded.orientation,
+                    x,
+                    y
+                );
+
+            ctx.fillStyle =
+                COLORS[colorID];
+
+            ctx.fillRect(
+                px + x,
+                py + y,
+                1,
+                1
+            );
+        }
+    }
+}
+
+
+/* =========================================================
+   GET WORLD BLOCK
+
+   This is where the dungeon room orientation is applied.
+
+   World coordinate
+        ↓
+   dungeon room
+        ↓
+   local coordinate inside room
+        ↓
+   rotate local coordinate
+        ↓
+   fetch encoded block
+        ↓
+   combine block orientation with room orientation
+========================================================= */
+
+function getWorldBlock(wx, wy) {
+
+    if (
+        wx < 0 ||
+        wy < 0 ||
+        wx >= WORLD_W ||
+        wy >= WORLD_H
+    ) {
+        return 0;
+    }
+
+	const dungeonX = Math.floor(wx / ROOM_BLOCKS);
+	const dungeonY = Math.floor(wy / ROOM_BLOCKS);
+
+    const dungeonValue =
+        DUNGEON[dungeonY][dungeonX];
+
+    const roomInfo =
+        decodeRoom(dungeonValue);
+
+
+    /*
+        Position inside displayed room.
+    */
+
+	const localX = wx % ROOM_BLOCKS;
+	const localY = wy % ROOM_BLOCKS;
+
+
+    /*
+        Reverse rotation to determine which cell
+        in the canonical room definition supplies
+        this displayed position.
+    */
+
+    let sx = localX;
+    let sy = localY;
+
+    switch (roomInfo.orientation) {
+
+        case E:
+
+            sx = localY;
+            sy = ROOM_BLOCKS-1 - localX;
+
+            break;
+
+
+        case S:
+
+            sx = ROOM_BLOCKS-1 - localX;
+            sy = ROOM_BLOCKS-1 - localY;
+
+            break;
+
+
+        case W:
+
+            sx = ROOM_BLOCKS-1 - localY;
+            sy = localX;
+
+            break;
+    }
+
+
+    /*
+        Get encoded block from canonical room.
+    */
+
+    const room =
+        ROOMS[roomInfo.room];
+
+	const blockValue = room[sy * ROOM_BLOCKS + sx];
+
+    /*
+        Decode block because its orientation must
+        rotate along with the room.
+    */
+
+    const blockInfo =
+        decodeBlock(blockValue);
+
+
+    /*
+        Room rotation also rotates the block.
+    */
+
+    const finalOrientation =
+        (
+            blockInfo.orientation +
+            roomInfo.orientation
+        ) & 3;
+
+
+    /*
+        Re-encode block.
+    */
+
+    return (
+        blockInfo.block |
+        (finalOrientation << 6)
+    );
+}
+
+
+/* =========================================================
+   CAMERA
+========================================================= */
+
+let cameraX = 0;
+let cameraY = 0;
+
+/* =========================================================
+   OBJECT TYPES
+========================================================= */
+
+const OBJECT = {
+    LADDER: 0,
+    BOW: 1,
+    QUIVER: 2,
+    SWORD: 3,
+    KEY: 4,
+    CROWN: 5,
+    BOAT: 6,
+    SNAKE: 7,
+    DEMON: 8,
+    BAT: 9,
+    DRAGON: 10,
+    
+    SKULL_1: 11,
+    SKULL_2: 12,
+    SKULL_HORNS: 13,
+    BONES: 14,
+
+    CABIN: 15,
+
+    MOUNTAIN_1: 16,
+    MOUNTAIN_2: 17,
+
+    RIVER_1: 18,
+    RIVER_2: 19,
+
+    AXE: 20,
+    FOREST: 21
+
+};
+
+
+/* =========================================================
+   OBJECT DEFINITIONS
+
+   sprite1, sprite2
+
+   -1 means not animated.
+========================================================= */
+
+const OBJECT_DEFS = [
+
+    [SPRITE.LADDER,   -1],
+    [SPRITE.BOW,      -1],
+    [SPRITE.QUIVER,   -1],
+    [SPRITE.SWORD,    -1],
+    [SPRITE.KEY,      -1],
+    [SPRITE.CROWN,    -1],
+    [SPRITE.BOAT,     -1],
+
+    [SPRITE.SNAKE_1,  SPRITE.SNAKE_2],
+    [SPRITE.DEMON_1,  SPRITE.DEMON_2],
+    [SPRITE.BAT_1,    SPRITE.BAT_2],
+    [SPRITE.DRAGON_1, SPRITE.DRAGON_2],
+    
+	[SPRITE.SKULL_1,     -1],
+	[SPRITE.SKULL_2,     -1],
+	[SPRITE.SKULL_HORNS, -1],
+	[SPRITE.BONES,       -1],
+	
+	[SPRITE.CABIN,       -1],
+	
+	[SPRITE.MOUNTAIN_1,  -1],
+	[SPRITE.MOUNTAIN_2,  -1],
+	
+	[SPRITE.RIVER_1,     -1],
+	[SPRITE.RIVER_2,     -1],
+	
+	[SPRITE.AXE,         -1],
+	[SPRITE.FOREST,      -1]
+];
+
+/* =========================================================
+   DUNGEON OBJECTS
+
+   [x, y, object]
+
+   x/y are WORLD BLOCK coordinates.
+========================================================= */
+
+const DUNGEON_OBJECTS = [
+
+    [ 5,  4, OBJECT.LADDER],
+    [ 5,  5, OBJECT.AXE],
+    [12,  5, OBJECT.BOW],
+    [14,  5, OBJECT.QUIVER],
+    [20, 10, OBJECT.SWORD],
+    [27, 14, OBJECT.KEY],
+    [36, 18, OBJECT.CROWN],
+    [45, 20, OBJECT.BOAT],
+
+    [18,  4, OBJECT.SNAKE],
+    [32,  7, OBJECT.DEMON],
+    [50, 15, OBJECT.BAT],
+    [70, 20, OBJECT.DRAGON]
+];
+
+function drawSprite(spriteID, bx, by) {
+
+    const sprite = SPRITES[spriteID];
+
+    if (!sprite)
+        return;
+
+    const px = bx * 8;
+    const py = by * 8;
+
+    for (let y = 0; y < 8; y++) {
+
+        for (let x = 0; x < 8; x++) {
+
+            const color =
+                sprite[y * 8 + x];
+
+            /*
+                Zero is transparent.
+            */
+
+            if (color === 0)
+                continue;
+
+            ctx.fillStyle =
+                SPRITE_COLORS[color];
+
+            ctx.fillRect(
+                px + x,
+                py + y,
+                1,
+                1
+            );
+        }
+    }
+}
+
+const PLAYER_MODE = {
+    NORMAL: 0,
+    BOW: 1,
+    SWORD: 2
+};
+
+const PLAYER_ANIMATIONS = [
+    ANIMATION.PLAYER,
+    ANIMATION.PLAYER_BOW,
+    ANIMATION.PLAYER_SWORD
+];
+
+const player = {
+    x: 4,
+    y: 4,
+    direction: N,
+    mode: PLAYER_MODE.NORMAL,
+    
+    inventory: {
+		axe: false,
+		boat: false,
+		key: false,
+		crown: false,
+		arrow: false,
+		sword: false,
+		bow: false,
+	}
+};
+
+function drawPlayer() {
+
+    const sx = player.x - cameraX;
+    const sy = player.y - cameraY;
+
+    if (
+        sx < 0 || sy < 0 ||
+        sx >= VIEW_W || sy >= VIEW_H
+    ) {
+        return;
+    }
+
+    const frames =
+        PLAYER_ANIMATIONS[player.mode];
+
+    const spriteID =
+        frames[animationFrame & 1];
+
+    drawSprite(spriteID, sx, sy);
+}
+
+/* =========================================================
+   INVENTORY DISPLAY
+
+   Draws collected item sprites across top-left.
+========================================================= */
+
+const INVENTORY_ICONS = [
+    ["axe",   SPRITE.AXE],
+    ["boat",  SPRITE.BOAT],
+    ["key",   SPRITE.KEY],
+    ["crown", SPRITE.CROWN],
+    ["arrow", SPRITE.QUIVER],
+    ["sword", SPRITE.SWORD],
+    ["bow",   SPRITE.BOW]
+];
+
+function drawInventory() {
+
+    const slotSize = 12;
+    const iconSize = 8;
+    const padding = 2;
+
+    const x0 = 2;
+    const y0 = 2;
+
+    const width = INVENTORY_ICONS.length * slotSize + padding * 2;
+    const height = slotSize + padding * 2;
+
+    ctx.save();
+
+    // Outer shadow
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(x0 + 1, y0 + 1, width, height);
+
+    // Main panel
+    ctx.fillStyle = "#29221a";
+    ctx.fillRect(x0, y0, width, height);
+
+    // Gold panel border
+    ctx.strokeStyle = "#b08a40";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(
+        x0 + 0.5,
+        y0 + 0.5,
+        width - 1,
+        height - 1
+    );
+
+    for (let i = 0; i < INVENTORY_ICONS.length; i++) {
+
+        const [item, spriteID] = INVENTORY_ICONS[i];
+
+        const x = x0 + padding + i * slotSize;
+        const y = y0 + padding;
+
+        const owned = player.inventory[item];
+
+        const equipped =
+            (item === "sword" && player.mode === PLAYER_MODE.SWORD) ||
+            (item === "bow" && player.mode === PLAYER_MODE.BOW);
+
+        // Slot background
+        ctx.fillStyle = owned ? "#302c24" : "#171717";
+        ctx.fillRect(x, y, slotSize - 1, slotSize - 1);
+
+        // Slot border
+        ctx.strokeStyle = equipped
+            ? "#ffe070"
+            : owned
+                ? "#8c7445"
+                : "#444444";
+
+        ctx.strokeRect(
+            x + 0.5,
+            y + 0.5,
+            slotSize - 2,
+            slotSize - 2
+        );
+
+        // Draw collected item
+        if (owned) {
+
+            const iconX = x + Math.floor((slotSize - iconSize) / 2);
+            const iconY = y + Math.floor((slotSize - iconSize) / 2);
+
+            drawSprite(spriteID, iconX / 8, iconY / 8);
+        }
+    }
+
+    ctx.restore();
+}
+
+/* =========================================================
+   DRAW VIEW
+========================================================= */
+
+function draw() {
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    for (let y = 0; y < VIEW_H; y++) {
+
+        for (let x = 0; x < VIEW_W; x++) {
+
+            const wx =
+                cameraX + x;
+
+            const wy =
+                cameraY + y;
+
+            const block =
+                getWorldBlock(
+                    wx,
+                    wy
+                );
+
+            drawBlock(
+                block,
+                x,
+                y
+            );
+        }
+    }
+    
+	for (const obj of DUNGEON_OBJECTS) {
+	
+		const worldX = obj[0];
+		const worldY = obj[1];
+		const objectID = obj[2];
+	
+		const screenX =
+			worldX - cameraX;
+	
+		const screenY =
+			worldY - cameraY;
+	
+	
+		/*
+			Outside viewport.
+		*/
+	
+		if (
+			screenX < 0 ||
+			screenY < 0 ||
+			screenX >= VIEW_W ||
+			screenY >= VIEW_H
+		) {
+			continue;
+		}
+	
+	
+		const def =
+			OBJECT_DEFS[objectID];
+	
+	
+		let spriteID =
+			def[0];
+	
+	
+		/*
+			Animated object.
+		*/
+	
+		if (
+			def[1] !== -1 &&
+			animationFrame
+		) {
+			spriteID = def[1];
+		}
+	
+	
+		drawSprite(
+			spriteID,
+			screenX,
+			screenY
+		);
+	}
+	
+	drawPlayer();
+	drawInventory();
+}
+
+let animationFrame = 0;
+
+setInterval(function() {
+
+    animationFrame =
+        animationFrame ^ 1;
+
+    draw();
+
+}, 350);
+
+/* =========================================================
+   CAMERA LIMITS
+========================================================= */
+
+function clampCamera() {
+
+    cameraX =
+        Math.max(
+            0,
+            Math.min(
+                WORLD_W - VIEW_W,
+                cameraX
+            )
+        );
+
+    cameraY =
+        Math.max(
+            0,
+            Math.min(
+                WORLD_H - VIEW_H,
+                cameraY
+            )
+        );
+}
+
+/* =========================================================
+   MONSTER PROXIMITY SOUND
+========================================================= */
+
+const MONSTER_SOUNDS = {
+    [OBJECT.BAT]:    SOUND.BAT,
+    [OBJECT.SNAKE]:  SOUND.SNAKE,
+    [OBJECT.DEMON]:  SOUND.DEMON,
+    [OBJECT.DRAGON]: SOUND.DRAGON
+
+};
+
+const MONSTER_SOUND_RANGE = 10;
+
+function updateMonsterSounds() {
+
+    if (!audioCtx || !soundEnabled) return;
+
+    for (const obj of DUNGEON_OBJECTS) {
+
+        const [x, y, type] = obj;
+
+        const soundID = MONSTER_SOUNDS[type];
+
+        if (soundID === undefined) {
+            continue;
+        }
+
+        const dx = x - player.x;
+        const dy = y - player.y;
+
+        // Euclidean distance in dungeon squares.
+        const distance = Math.hypot(dx, dy);
+
+        if (distance > MONSTER_SOUND_RANGE) {
+            continue;
+        }
+
+        // Linear volume falloff.
+		const proximity =
+			1 - distance / MONSTER_SOUND_RANGE;
+		
+		const volume = proximity * proximity;
+
+        if (volume <= 0) continue;
+
+        playSound(soundID, volume);
+    }
+}
+
+/* =========================================================
+   PLAYER ITEM PICKUP
+
+   Checks for sword or bow at player's position.
+   Removes collected item from dungeon.
+   Changes player animation and plays sound.
+========================================================= */
+
+function checkPlayerPickup() {
+
+    for (let i = DUNGEON_OBJECTS.length - 1; i >= 0; i--) {
+
+        const obj = DUNGEON_OBJECTS[i];
+
+        const [x, y, type] = obj;
+
+        if (x !== player.x || y !== player.y) {
+            continue;
+        }
+        
+        switch (type) {
+
+            case OBJECT.SWORD:
+                player.mode = PLAYER_MODE.SWORD;
+                player.inventory.sword = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+            case OBJECT.BOW:
+                player.mode = PLAYER_MODE.BOW;
+                player.inventory.bow = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+			case OBJECT.QUIVER:
+                player.inventory.arrow = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+			case OBJECT.KEY:
+			    player.inventory.key = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+            case OBJECT.QUIVER:
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+            case OBJECT.AXE:
+                player.inventory.axe = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+            case OBJECT.CROWN:
+                player.inventory.crown = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+            case OBJECT.BOAT:
+                player.inventory.boat = true;
+                DUNGEON_OBJECTS.splice(i, 1);
+                break;
+            default:
+        		return;
+        }
+        playSound(SOUND.PICKUP);
+    }
+}
+
+/* =========================================================
+   KEYBOARD
+========================================================= */
+
+document.addEventListener(
+    "keydown",
+    function(e) {
+
+        let dx = 0;
+        let dy = 0;
+
+        switch (e.key.toLowerCase()) {
+
+            case "w":
+                dy = -1;
+                player.direction = N;
+                break;
+
+            case "s":
+                dy = 1;
+                player.direction = S;
+                break;
+
+            case "a":
+                dx = -1;
+                player.direction = W;
+                break;
+
+            case "d":
+                dx = 1;
+                player.direction = E;
+                break;
+
+            default:
+                return;
+        }
+
+        e.preventDefault();
+
+        const nx = player.x + dx;
+        const ny = player.y + dy;
+
+        // Check world boundaries.
+        if (
+            nx < 0 ||
+            ny < 0 ||
+            nx >= WORLD_W ||
+            ny >= WORLD_H
+        ) {
+            return;
+        }
+
+        // Get terrain at destination.
+        const blockValue = getWorldBlock(nx, ny);
+        const blockID = decodeBlock(blockValue).block;
+
+        // Only solid floor blocks are walkable.
+        if (blockID !== 1) {
+            draw();
+            return;
+        }
+
+        // Move player.
+        player.x = nx;
+        player.y = ny;
+
+        // Center camera on player where possible.
+        cameraX = player.x - Math.floor(VIEW_W / 2);
+        cameraY = player.y - Math.floor(VIEW_H / 2);
+
+        clampCamera();
+
+        // Play footstep.
+        playSound(SOUND.STEP, 1);
+
+		// Check for items.
+		checkPlayerPickup();
+
+        draw();
+    }
+);
+
+
+initAudio();
+setInterval(function() {
+
+    updateMonsterSounds();
+
+}, 2000);
+
+/* =========================================================
+   START
+========================================================= */
+
+draw();
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,545 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="UTF-8">
+<title>Mountain Generator Test</title>
+
+<style>
+
+body {
+    margin: 0;
+    padding: 20px;
+    background: #171b1a;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+}
+
+h2 {
+    margin-top: 0;
+}
+
+#layout {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+canvas {
+    border: 2px solid #555;
+    image-rendering: pixelated;
+    max-width: 100%;
+}
+
+#controls {
+    padding: 15px;
+    background: #252b28;
+    border: 1px solid #45564a;
+    border-radius: 8px;
+    min-width: 220px;
+}
+
+button {
+    padding: 10px 15px;
+    background: #405d50;
+    color: white;
+    border: 1px solid #71917b;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+label {
+    display: block;
+    margin: 15px 0;
+}
+
+input[type="number"] {
+    width: 65px;
+    padding: 5px;
+    background: #151c18;
+    color: white;
+    border: 1px solid #607365;
+}
+
+#status {
+    margin-top: 15px;
+    font-size: 13px;
+    color: #b7d8c1;
+}
+
+</style>
+</head>
+
+<body>
+
+<h2>Mountain Generator Test</h2>
+
+<div id="layout">
+
+    <canvas id="map"
+            width="800"
+            height="480">
+    </canvas>
+
+    <div id="controls">
+
+        <button onclick="generateMap()">
+            Generate Mountains
+        </button>
+
+        <label>
+            Mountain coverage:
+            <input
+                id="mountainDensity"
+                type="number"
+                min="10"
+                max="45"
+                value="28"
+            > %
+        </label>
+
+        <label>
+            <input
+                id="showGrid"
+                type="checkbox"
+                onchange="drawMap()"
+            >
+            Show Grid
+        </label>
+
+        <div id="status"></div>
+
+    </div>
+
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   MAP CONSTANTS
+========================================================= */
+
+const W = 20;
+const H = 12;
+const TILE = 40;
+
+/* =========================================================
+   TERRAIN TYPES
+========================================================= */
+
+const TYPE = {
+    GRASS: 0,
+    MOUNTAIN: 1
+};
+
+/* =========================================================
+   COLORS
+========================================================= */
+
+const COLORS = {
+    4: "#b8b8b8",
+    11: "#83b86a",
+    12: "#a0c784"
+};
+
+const PALETTES = {
+    BROWN: "#8a7020"
+};
+
+/* =========================================================
+   SPRITES
+========================================================= */
+
+const SPRITES = {
+
+    20: [
+        0,4,0,0,0,0,0,0,
+        4,4,4,0,4,0,0,0,
+        0,0,0,4,4,4,0,0,
+        0,0,4,4,4,4,4,0,
+        0,4,0,4,4,4,4,4,
+        4,4,4,0,0,0,0,0,
+        0,4,4,4,0,0,4,0,
+        0,0,0,0,0,4,4,4
+    ],
+
+    21: [
+        0,0,0,0,0,0,4,0,
+        0,0,0,4,0,4,4,4,
+        0,0,4,4,4,0,0,0,
+        0,4,4,4,4,4,0,0,
+        4,4,4,4,4,0,4,0,
+        0,0,0,0,0,4,4,4,
+        0,4,0,0,4,4,4,0,
+        4,4,4,0,0,0,0,0
+    ],
+
+    44: [
+        11,11,11,11,11,11,11,11,
+        11,11,11,11,12,11,11,11,
+        11,11,12,11,11,11,11,11,
+        11,11,11,11,11,11,12,11,
+        11,11,11,11,11,11,12,11,
+        11,12,11,11,11,11,11,11,
+        11,11,11,11,11,11,11,11,
+        11,11,11,12,11,11,11,11
+    ]
+};
+
+/* =========================================================
+   UTILITIES
+========================================================= */
+
+function rnd(n) {
+    return Math.floor(Math.random() * n);
+}
+
+function range(a, b) {
+    return a + rnd(b - a + 1);
+}
+
+function inside(x, y) {
+    return x >= 0 && x < W &&
+           y >= 0 && y < H;
+}
+
+/* =========================================================
+   MAP DATA
+========================================================= */
+
+let map = [];
+
+function createMap() {
+
+    map = Array.from(
+        { length: H },
+        () => Array.from(
+            { length: W },
+            () => ({
+                type: TYPE.GRASS,
+                sprite: 44,
+                palette: null
+            })
+        )
+    );
+}
+
+function cell(x, y) {
+    return inside(x, y) ? map[y][x] : null;
+}
+
+function setCell(x, y, type, palette = null) {
+
+    if (!inside(x, y))
+        return false;
+
+    map[y][x] = {
+        type,
+        sprite:
+            type === TYPE.MOUNTAIN
+                ? (rnd(2) ? 20 : 21)
+                : 44,
+        palette
+    };
+
+    return true;
+}
+
+/* =========================================================
+   PROTECTED START / END
+
+   Leave some breathing room around the hut
+   and Cloudy Mountain.
+
+   Preserved from original generator.
+========================================================= */
+
+function protectedArea(x, y) {
+
+    return (
+        (x <= 1 && Math.abs(y - 6) <= 1) ||
+        (x >= 18 && Math.abs(y - 6) <= 1)
+    );
+}
+
+/* =========================================================
+   MOUNTAIN RANGE
+
+   Original wandering backbone with branches.
+========================================================= */
+
+function growMountainRange(
+    startX,
+    startY,
+    length,
+    dx,
+    dy
+) {
+
+    let x = startX;
+    let y = startY;
+
+    for (let i = 0; i < length; i++) {
+
+        if (!inside(x, y))
+            break;
+
+        if (!protectedArea(x, y)) {
+
+            const existing = cell(x, y);
+
+            if (
+                existing.type === TYPE.GRASS ||
+                existing.type === TYPE.MOUNTAIN
+            ) {
+                setCell(x, y, TYPE.MOUNTAIN, "BROWN");
+            }
+        }
+
+        // Short lateral spurs give the range
+        // an uneven silhouette.
+        if (Math.random() < 0.32) {
+
+            const sx = x + (rnd(2) ? 1 : -1);
+            const sy = y + (rnd(3) - 1);
+
+            if (
+                inside(sx, sy) &&
+                !protectedArea(sx, sy) &&
+                cell(sx, sy).type === TYPE.GRASS
+            ) {
+                setCell(sx, sy, TYPE.MOUNTAIN, "BROWN");
+            }
+        }
+
+        // Directional persistence.
+        const roll = Math.random();
+
+        if (roll < 0.48) {
+            x += dx;
+            y += dy;
+        }
+        else if (roll < 0.70) {
+            x += dx;
+        }
+        else if (roll < 0.88) {
+            y += dy;
+        }
+        else {
+            x -= dx;
+            y += dy;
+        }
+
+        // Sometimes turn the range.
+        if (Math.random() < 0.13)
+            dx *= -1;
+    }
+}
+
+/* =========================================================
+   GENERATE MOUNTAIN NETWORK
+
+   Original anchor-based mountain placement.
+========================================================= */
+
+function generateMountains(target) {
+
+    const anchors = [];
+    let attempts = 0;
+
+    function countMountains() {
+
+        let count = 0;
+
+        for (const row of map)
+            for (const c of row)
+                if (c.type === TYPE.MOUNTAIN)
+                    count++;
+
+        return count;
+    }
+
+    while (
+        countMountains() < target &&
+        attempts++ < 100
+    ) {
+
+        let x, y;
+
+        // Some ranges begin near existing ranges.
+        if (
+            anchors.length &&
+            Math.random() < 0.65
+        ) {
+
+            const a = anchors[rnd(anchors.length)];
+
+            x = a.x + range(-4, 4);
+            y = a.y + range(-3, 3);
+
+        } else {
+
+            x = range(2, W - 3);
+            y = rnd(H);
+        }
+
+        x = Math.max(1, Math.min(W - 2, x));
+        y = Math.max(0, Math.min(H - 1, y));
+
+        anchors.push({ x, y });
+
+        growMountainRange(
+            x,
+            y,
+            range(5, 13),
+            rnd(2) ? 1 : -1,
+            rnd(2) ? 1 : -1
+        );
+    }
+}
+
+/* =========================================================
+   CANVAS RENDERING
+========================================================= */
+
+const canvas = document.getElementById("map");
+const ctx = canvas.getContext("2d");
+
+ctx.imageSmoothingEnabled = false;
+
+function drawSprite(id, px, py, palette = null) {
+
+    const pixels = SPRITES[id];
+
+    if (!pixels)
+        return;
+
+    const scale = TILE / 8;
+
+    for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+
+            const value = pixels[y * 8 + x];
+
+            if (!value)
+                continue;
+
+            ctx.fillStyle =
+                palette && value === 4
+                ? PALETTES[palette]
+                : COLORS[value];
+
+            ctx.fillRect(
+                px + x * scale,
+                py + y * scale,
+                scale,
+                scale
+            );
+        }
+    }
+}
+
+function drawMap() {
+
+    ctx.clearRect(
+        0, 0,
+        canvas.width,
+        canvas.height
+    );
+
+    for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+
+            const px = x * TILE;
+            const py = y * TILE;
+            const c = cell(x, y);
+
+            drawSprite(44, px, py);
+
+            if (c.type === TYPE.MOUNTAIN) {
+                drawSprite(
+                    c.sprite,
+                    px,
+                    py,
+                    c.palette
+                );
+            }
+        }
+    }
+
+    if (document.getElementById("showGrid").checked) {
+
+        ctx.strokeStyle = "rgba(0,0,0,0.2)";
+        ctx.lineWidth = 1;
+
+        for (let x = 0; x <= W; x++) {
+
+            ctx.beginPath();
+            ctx.moveTo(x * TILE + 0.5, 0);
+            ctx.lineTo(x * TILE + 0.5, H * TILE);
+            ctx.stroke();
+        }
+
+        for (let y = 0; y <= H; y++) {
+
+            ctx.beginPath();
+            ctx.moveTo(0, y * TILE + 0.5);
+            ctx.lineTo(W * TILE, y * TILE + 0.5);
+            ctx.stroke();
+        }
+    }
+}
+
+/* =========================================================
+   TEST CONTROLLER
+========================================================= */
+
+function generateMap() {
+
+    const mountainPct = Math.max(
+        10,
+        Math.min(
+            45,
+            Number(
+                document.getElementById(
+                    "mountainDensity"
+                ).value
+            ) || 28
+        )
+    );
+
+    createMap();
+
+    const target = Math.round(
+        W * H * mountainPct / 100
+    );
+
+    generateMountains(target);
+
+    let actual = 0;
+
+    for (const row of map)
+        for (const c of row)
+            if (c.type === TYPE.MOUNTAIN)
+                actual++;
+
+    document.getElementById("status").textContent =
+        "Target: " + target +
+        " mountains | Generated: " + actual;
+
+    drawMap();
+}
+
+/* =========================================================
+   INITIALIZE
+========================================================= */
+
+generateMap();
+
+</script>
+
+</body>
+</html>

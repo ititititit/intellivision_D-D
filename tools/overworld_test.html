@@ -1,0 +1,291 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="UTF-8">
+
+<title>Overworld Generator Test</title>
+
+<style>
+
+/* =========================================================
+   PAGE
+========================================================= */
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 20px;
+
+    background: #171b1a;
+    color: #ddd;
+
+    font-family: Arial, sans-serif;
+}
+
+h2 {
+    margin: 0 0 8px;
+}
+
+p {
+    font-size: 13px;
+    color: #b8c8bb;
+}
+
+
+/* =========================================================
+   LAYOUT
+========================================================= */
+
+#layout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+
+/* =========================================================
+   MAP DISPLAY
+========================================================= */
+
+canvas {
+    display: block;
+
+    border: 2px solid #555;
+
+    max-width: 100%;
+
+    image-rendering: pixelated;
+}
+
+
+/* =========================================================
+   CONTROL PANEL
+========================================================= */
+
+#controls {
+    width: 270px;
+    padding: 15px;
+
+    background: #252b28;
+
+    border: 1px solid #45564a;
+    border-radius: 8px;
+}
+
+button {
+    padding: 10px 14px;
+
+    background: #405d50;
+    color: white;
+
+    border: 1px solid #71917b;
+    border-radius: 5px;
+
+    cursor: pointer;
+}
+
+button:hover {
+    background: #527661;
+}
+
+label {
+    display: block;
+
+    margin: 12px 0;
+
+    font-size: 13px;
+}
+
+input[type="number"] {
+    width: 70px;
+    padding: 5px;
+
+    background: #151c18;
+    color: white;
+
+    border: 1px solid #607365;
+}
+
+
+/* =========================================================
+   STATISTICS
+========================================================= */
+
+#status {
+    margin-top: 15px;
+
+    font: 13px/1.7 monospace;
+
+    white-space: pre-line;
+
+    color: #b7d8c1;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h2>Overworld Generator Test</h2>
+
+<p>
+    Generation is separate from rendering and controls.
+</p>
+
+
+<!-- =====================================================
+     MAIN LAYOUT
+===================================================== -->
+
+<div id="layout">
+
+
+    <!-- ================================================
+         OVERWORLD CANVAS
+    ================================================= -->
+
+    <canvas
+        id="map"
+        width="800"
+        height="480">
+    </canvas>
+
+
+    <!-- ================================================
+         GENERATOR CONTROLS
+    ================================================= -->
+
+    <div id="controls">
+
+        <button onclick="generateOverworldTest()">
+            Generate New Map
+        </button>
+
+
+        <label>
+            Mountain coverage:
+
+            <input
+                id="mountainDensity"
+                type="number"
+                min="0"
+                max="45"
+                value="28">
+
+            %
+        </label>
+
+
+        <label>
+            Forest coverage:
+
+            <input
+                id="forestDensity"
+                type="number"
+                min="0"
+                max="50"
+                value="15">
+
+            %
+        </label>
+
+
+        <label>
+            Number of rivers:
+
+            <input
+                id="riverCount"
+                type="number"
+                min="0"
+                max="8"
+                value="2">
+        </label>
+
+
+        <label>
+            Maximum river length:
+
+            <input
+                id="riverLength"
+                type="number"
+                min="1"
+                max="100"
+                value="10">
+        </label>
+
+
+        <label>
+            Mountain crossing penalty:
+
+            <input
+                id="mountainPenalty"
+                type="number"
+                min="1"
+                max="500"
+                value="80">
+        </label>
+
+
+        <label>
+
+            <input
+                id="allowCrossing"
+                type="checkbox"
+                checked>
+
+            Allow river crossings through mountains
+
+        </label>
+
+
+        <label>
+
+            <input
+                id="showGrid"
+                type="checkbox"
+                onchange="refreshOverworldTest()">
+
+            Show grid
+
+        </label>
+
+
+        <!-- ============================================
+             GENERATION STATISTICS
+        ============================================= -->
+
+        <div id="status"></div>
+
+    </div>
+
+</div>
+
+
+<!-- =====================================================
+     JAVASCRIPT MODULES
+
+     Load in dependency order.
+
+     1. Terrain generation
+     2. Sprite rendering
+     3. Test controls and initialization
+
+     All files must be in the same directory.
+===================================================== -->
+
+<script src="overworld_generator.js"></script>
+
+<script src="overworld_render.js"></script>
+
+<script src="overworld_test.js"></script>
+
+
+</body>
+</html>

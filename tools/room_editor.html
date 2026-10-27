@@ -1,0 +1,1153 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dungeon Room Editor</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 20px;
+    background: #151515;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+}
+
+h2 {
+    margin: 0 0 18px;
+}
+
+h3 {
+    margin: 0 0 12px;
+    font-size: 15px;
+}
+
+.editor {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+.panel {
+    padding: 15px;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 6px;
+}
+
+#blockPalette {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.blockChoice {
+    padding: 7px;
+    border: 2px solid #555;
+    cursor: pointer;
+    text-align: center;
+    min-width: 80px;
+}
+
+.blockChoice.selected {
+    border-color: #fff;
+    background: #333;
+}
+
+.blockChoice canvas {
+    display: block;
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 6px;
+    image-rendering: pixelated;
+}
+
+.blockChoice span {
+    font-size: 12px;
+}
+
+.rotationChoices {
+    display: flex;
+    gap: 7px;
+    margin-bottom: 15px;
+}
+
+.rotationChoice {
+    padding: 9px 13px;
+    background: #333;
+    border: 1px solid #666;
+    cursor: pointer;
+}
+
+.rotationChoice.selected {
+    background: #555;
+    border: 2px solid white;
+}
+
+#roomCanvas {
+    display: block;
+    width: 576px;
+    height: 576px;
+    image-rendering: pixelated;
+    border: 2px solid #888;
+    cursor: crosshair;
+    touch-action: none;
+}
+
+button {
+    background: #333;
+    color: #eee;
+    border: 1px solid #666;
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #444;
+}
+
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+textarea {
+    width: 100%;
+    height: 390px;
+    resize: vertical;
+    background: #101010;
+    color: #ddd;
+    border: 1px solid #555;
+    padding: 12px;
+    font-family: Consolas, monospace;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.codePanel {
+    width: 420px;
+}
+
+.hint {
+    color: #aaa;
+    font-size: 12px;
+    line-height: 1.6;
+    margin-top: 12px;
+}
+
+#status {
+    min-height: 18px;
+    margin-top: 10px;
+    color: #aaddaa;
+    font-size: 12px;
+}
+
+</style>
+</head>
+
+<body>
+
+<h2>Dungeon Room Editor — 9 × 9</h2>
+
+<div class="editor">
+
+    <!-- BLOCK SELECTION -->
+    <div class="panel">
+
+        <h3>Block Palette</h3>
+
+        <div id="blockPalette"></div>
+
+        <h3>Rotation</h3>
+
+        <div class="rotationChoices" id="rotationChoices">
+            <button class="rotationChoice selected" data-rotation="0">N</button>
+            <button class="rotationChoice" data-rotation="1">E</button>
+            <button class="rotationChoice" data-rotation="2">S</button>
+            <button class="rotationChoice" data-rotation="3">W</button>
+        </div>
+
+        <div class="hint">
+            Select a block and rotation.<br>
+            Click or drag on the room to paint.<br>
+            Rotation applies to diagonal blocks.
+        </div>
+
+    </div>
+
+    <!-- ROOM CANVAS -->
+    <div class="panel">
+
+        <h3>Room Layout</h3>
+
+        <canvas
+            id="roomCanvas"
+            width="576"
+            height="576">
+        </canvas>
+
+        <div class="controls">
+            <button onclick="clearRoom()">Clear to Wall</button>
+            <button onclick="fillRoom()">Fill with Floor</button>
+            <button onclick="rotateRoom()">Rotate Room 90°</button>
+        </div>
+
+        <div id="status"></div>
+
+    </div>
+
+    <!-- ROOM ARRAY -->
+    <div class="panel codePanel">
+
+        <h3>Room Array</h3>
+
+        <textarea
+            id="roomText"
+            spellcheck="false">
+        </textarea>
+
+        <div class="controls">
+            <button onclick="applyRoomText()">Apply / Parse Room</button>
+            <button onclick="copyRoomText()">Copy Array</button>
+        </div>
+
+        <div class="hint">
+            Paste an existing 9×9 room array and click
+            Apply / Parse Room.
+
+            Supported values:
+            0, 1, B(2,N), B(2,E), B(2,S), B(2,W).
+
+            The editor also accepts B(0,N), B(1,E),
+            and numeric encoded block values.
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   BLOCK COLORS
+========================================================= */
+
+const COLORS = [
+    "#3f7d4a",     // 0 wall
+    "#b99a68"      // 1 floor
+];
+
+
+/* =========================================================
+   BLOCK DEFINITIONS
+========================================================= */
+
+const BLOCKS = [
+
+    /* BLOCK 0 - SOLID WALL */
+    [
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0
+    ],
+
+    /* BLOCK 1 - SOLID FLOOR */
+    [
+        1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1
+    ],
+
+    /* BLOCK 2 - DIAGONAL */
+    [
+        0,0,0,0,0,0,0,1,
+        0,0,0,0,0,0,1,1,
+        0,0,0,0,0,1,1,1,
+        0,0,0,0,1,1,1,1,
+        0,0,0,1,1,1,1,1,
+        0,0,1,1,1,1,1,1,
+        0,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1
+    ]
+
+];
+
+
+/* =========================================================
+   ORIENTATION
+========================================================= */
+
+const N = 0;
+const E = 1;
+const S = 2;
+const W = 3;
+
+const ROTATION_NAMES = ["N", "E", "S", "W"];
+
+
+/* =========================================================
+   BLOCK ENCODING
+
+   Bits 0-5 = block ID
+   Bits 6-7 = rotation
+
+   Matches the game's encoded block structure.
+========================================================= */
+
+function B(blockID, rotation = N) {
+
+    return (blockID & 63) | ((rotation & 3) << 6);
+
+}
+
+function decodeBlock(value) {
+
+    return {
+        id: value & 63,
+        rotation: (value >> 6) & 3
+    };
+
+}
+
+
+/* =========================================================
+   EDITOR CONSTANTS
+========================================================= */
+
+const ROOM_SIZE = 9;
+
+const BLOCK_SIZE = 8;
+
+const CELL_SIZE = 64;
+
+const CANVAS_SIZE = ROOM_SIZE * CELL_SIZE;
+
+
+/* =========================================================
+   EDITOR STATE
+========================================================= */
+
+let selectedBlock = 2;
+
+let selectedRotation = N;
+
+let drawing = false;
+
+let room = new Array(81).fill(0);
+
+
+/* =========================================================
+   HTML ELEMENTS
+========================================================= */
+
+const canvas =
+    document.getElementById("roomCanvas");
+
+const ctx =
+    canvas.getContext("2d");
+
+const blockPalette =
+    document.getElementById("blockPalette");
+
+const rotationChoices =
+    document.getElementById("rotationChoices");
+
+const roomText =
+    document.getElementById("roomText");
+
+const statusElement =
+    document.getElementById("status");
+
+ctx.imageSmoothingEnabled = false;
+
+
+/* =========================================================
+   DRAW A ROTATED BLOCK
+
+   Uses the same rotation coordinate mapping as
+   the dungeon game.
+========================================================= */
+
+function drawBlock(ctx, blockID, rotation, px, py, scale) {
+
+    const block = BLOCKS[blockID];
+
+    if (!block)
+        return;
+
+    rotation = ((rotation % 4) + 4) % 4;
+
+    for (let y = 0; y < BLOCK_SIZE; y++) {
+
+        for (let x = 0; x < BLOCK_SIZE; x++) {
+
+            let sx, sy;
+
+            switch (rotation) {
+
+                case N:
+                    sx = x;
+                    sy = y;
+                    break;
+
+                case E:
+                    sx = y;
+                    sy = BLOCK_SIZE - 1 - x;
+                    break;
+
+                case S:
+                    sx = BLOCK_SIZE - 1 - x;
+                    sy = BLOCK_SIZE - 1 - y;
+                    break;
+
+                case W:
+                    sx = BLOCK_SIZE - 1 - y;
+                    sy = x;
+                    break;
+
+            }
+
+            const colorIndex =
+                block[sy * BLOCK_SIZE + sx];
+
+            ctx.fillStyle = COLORS[colorIndex];
+
+            ctx.fillRect(
+                px + x * scale,
+                py + y * scale,
+                scale,
+                scale
+            );
+
+        }
+
+    }
+
+}
+
+
+/* =========================================================
+   INITIALIZE BLOCK PALETTE
+========================================================= */
+
+function initializeBlockPalette() {
+
+    blockPalette.innerHTML = "";
+
+    const names = [
+        "0 - Wall",
+        "1 - Floor",
+        "2 - Diagonal"
+    ];
+
+    BLOCKS.forEach((block, index) => {
+
+        const choice = document.createElement("div");
+
+        choice.className = "blockChoice";
+
+        if (index === selectedBlock)
+            choice.classList.add("selected");
+
+        const preview = document.createElement("canvas");
+
+        preview.width = 64;
+        preview.height = 64;
+
+        const previewCtx = preview.getContext("2d");
+
+        previewCtx.imageSmoothingEnabled = false;
+
+        drawBlock(
+            previewCtx,
+            index,
+            selectedRotation,
+            0,
+            0,
+            8
+        );
+
+        const label = document.createElement("span");
+
+        label.textContent = names[index];
+
+        choice.appendChild(preview);
+        choice.appendChild(label);
+
+        choice.addEventListener("click", () => {
+
+            selectedBlock = index;
+
+            initializeBlockPalette();
+
+        });
+
+        blockPalette.appendChild(choice);
+
+    });
+
+}
+
+
+/* =========================================================
+   INITIALIZE ROTATION CONTROLS
+========================================================= */
+
+function initializeRotationControls() {
+
+    const buttons =
+        rotationChoices.querySelectorAll("button");
+
+    buttons.forEach(button => {
+
+        button.addEventListener("click", () => {
+
+            selectedRotation =
+                Number(button.dataset.rotation);
+
+            updateRotationButtons();
+
+            initializeBlockPalette();
+
+        });
+
+    });
+
+}
+
+
+function updateRotationButtons() {
+
+    const buttons =
+        rotationChoices.querySelectorAll("button");
+
+    buttons.forEach(button => {
+
+        const rotation =
+            Number(button.dataset.rotation);
+
+        button.classList.toggle(
+            "selected",
+            rotation === selectedRotation
+        );
+
+    });
+
+}
+
+
+/* =========================================================
+   DRAW ROOM
+========================================================= */
+
+function renderRoom() {
+
+    ctx.clearRect(
+        0,
+        0,
+        CANVAS_SIZE,
+        CANVAS_SIZE
+    );
+
+    for (let y = 0; y < ROOM_SIZE; y++) {
+
+        for (let x = 0; x < ROOM_SIZE; x++) {
+
+            const index = y * ROOM_SIZE + x;
+
+            const decoded = decodeBlock(room[index]);
+
+            drawBlock(
+                ctx,
+                decoded.id,
+                decoded.rotation,
+                x * CELL_SIZE,
+                y * CELL_SIZE,
+                CELL_SIZE / BLOCK_SIZE
+            );
+
+        }
+
+    }
+
+    drawGrid();
+
+    updateRoomText();
+
+}
+
+
+/* =========================================================
+   DRAW GRID LINES
+========================================================= */
+
+function drawGrid() {
+
+    ctx.strokeStyle = "rgba(0,0,0,0.4)";
+    ctx.lineWidth = 1;
+
+    for (let i = 0; i <= ROOM_SIZE; i++) {
+
+        const position = i * CELL_SIZE + 0.5;
+
+        ctx.beginPath();
+
+        ctx.moveTo(position, 0);
+        ctx.lineTo(position, CANVAS_SIZE);
+
+        ctx.stroke();
+
+        ctx.beginPath();
+
+        ctx.moveTo(0, position);
+        ctx.lineTo(CANVAS_SIZE, position);
+
+        ctx.stroke();
+
+    }
+
+}
+
+
+/* =========================================================
+   GET ROOM CELL FROM MOUSE
+========================================================= */
+
+function getCellFromEvent(event) {
+
+    const rect = canvas.getBoundingClientRect();
+
+    const x =
+        Math.floor(
+            (event.clientX - rect.left) *
+            canvas.width / rect.width / CELL_SIZE
+        );
+
+    const y =
+        Math.floor(
+            (event.clientY - rect.top) *
+            canvas.height / rect.height / CELL_SIZE
+        );
+
+    if (
+        x < 0 ||
+        x >= ROOM_SIZE ||
+        y < 0 ||
+        y >= ROOM_SIZE
+    ) {
+        return -1;
+    }
+
+    return y * ROOM_SIZE + x;
+
+}
+
+
+/* =========================================================
+   PAINT ROOM CELL
+========================================================= */
+
+function paintCell(index) {
+
+    if (index < 0)
+        return;
+
+    room[index] = B(
+        selectedBlock,
+        selectedRotation
+    );
+
+    renderRoom();
+
+}
+
+
+/* =========================================================
+   MOUSE PAINTING
+========================================================= */
+
+function initializePainting() {
+
+    canvas.addEventListener("pointerdown", event => {
+
+        if (event.button !== 0)
+            return;
+
+        drawing = true;
+
+        canvas.setPointerCapture(event.pointerId);
+
+        paintCell(getCellFromEvent(event));
+
+        event.preventDefault();
+
+    });
+
+    canvas.addEventListener("pointermove", event => {
+
+        if (!drawing)
+            return;
+
+        paintCell(getCellFromEvent(event));
+
+    });
+
+    canvas.addEventListener("pointerup", () => {
+
+        drawing = false;
+
+    });
+
+    canvas.addEventListener("pointercancel", () => {
+
+        drawing = false;
+
+    });
+
+}
+
+
+/* =========================================================
+   CLEAR / FILL ROOM
+========================================================= */
+
+function clearRoom() {
+
+    room.fill(0);
+
+    renderRoom();
+
+    showStatus("Room cleared to wall.");
+
+}
+
+
+function fillRoom() {
+
+    room.fill(1);
+
+    renderRoom();
+
+    showStatus("Room filled with floor.");
+
+}
+
+
+/* =========================================================
+   ROTATE ENTIRE ROOM CLOCKWISE
+
+   Moves every cell and rotates its block orientation.
+========================================================= */
+
+function rotateRoom() {
+
+    const result = new Array(81).fill(0);
+
+    for (let y = 0; y < ROOM_SIZE; y++) {
+
+        for (let x = 0; x < ROOM_SIZE; x++) {
+
+            const oldIndex =
+                y * ROOM_SIZE + x;
+
+            const newX =
+                ROOM_SIZE - 1 - y;
+
+            const newY = x;
+
+            const newIndex =
+                newY * ROOM_SIZE + newX;
+
+            const decoded =
+                decodeBlock(room[oldIndex]);
+
+            result[newIndex] = B(
+                decoded.id,
+                (decoded.rotation + 1) % 4
+            );
+
+        }
+
+    }
+
+    room = result;
+
+    renderRoom();
+
+    showStatus("Room rotated clockwise.");
+
+}
+
+
+/* =========================================================
+   FORMAT ONE ROOM VALUE
+========================================================= */
+
+function formatRoomValue(value) {
+
+    const decoded = decodeBlock(value);
+
+    if (decoded.id === 0)
+        return "0";
+
+    if (decoded.id === 1)
+        return "1";
+
+    return "B(" +
+        decoded.id +
+        "," +
+        ROTATION_NAMES[decoded.rotation] +
+        ")";
+
+}
+
+
+/* =========================================================
+   UPDATE ROOM ARRAY TEXT
+
+   Always outputs 9 rows of 9 entries.
+========================================================= */
+
+function updateRoomText() {
+
+    const lines = [];
+
+    for (let y = 0; y < ROOM_SIZE; y++) {
+
+        const values = [];
+
+        for (let x = 0; x < ROOM_SIZE; x++) {
+
+            const index =
+                y * ROOM_SIZE + x;
+
+            values.push(
+                formatRoomValue(room[index])
+            );
+
+        }
+
+        lines.push(
+            "    " +
+            values.join(",") +
+            (y < ROOM_SIZE - 1 ? "," : "")
+        );
+
+    }
+
+    roomText.value =
+        "[\n" +
+        lines.join("\n") +
+        "\n]";
+
+}
+
+
+/* =========================================================
+   PARSE ROOM VALUE
+
+   Accepts:
+       0
+       1
+       130
+       B(2,N)
+       B(2,E)
+       B(2,S)
+       B(2,W)
+
+   No eval() is used.
+========================================================= */
+
+function parseRoomValue(token) {
+
+    token = token.trim();
+
+    if (/^\d+$/.test(token)) {
+
+        const value = Number(token);
+
+        const decoded = decodeBlock(value);
+
+        if (
+            value < 0 ||
+            value > 255 ||
+            decoded.id >= BLOCKS.length
+        ) {
+            throw new Error(
+                "Invalid encoded block: " + token
+            );
+        }
+
+        return value;
+
+    }
+
+    const match = token.match(
+        /^B\s*\(\s*(\d+)\s*,\s*([NESW0-3])\s*\)$/i
+    );
+
+    if (!match) {
+
+        throw new Error(
+            "Invalid room value: " + token
+        );
+
+    }
+
+    const blockID = Number(match[1]);
+
+    const rotationToken = match[2].toUpperCase();
+
+    if (blockID >= BLOCKS.length) {
+
+        throw new Error(
+            "Unknown block ID: " + blockID
+        );
+
+    }
+
+    let rotation;
+
+    if (/^[0-3]$/.test(rotationToken)) {
+
+        rotation = Number(rotationToken);
+
+    } else {
+
+        rotation = {
+            N: N,
+            E: E,
+            S: S,
+            W: W
+        }[rotationToken];
+
+    }
+
+    return B(blockID, rotation);
+
+}
+
+
+/* =========================================================
+   PARSE COMPLETE ROOM ARRAY
+
+   Supports pasted JavaScript-style room arrays.
+========================================================= */
+
+function parseRoomArray(text) {
+
+    // Remove single-line comments.
+    text = text.replace(/\/\/[^\n\r]*/g, "");
+
+    // Remove block comments.
+    text = text.replace(/\/\*[\s\S]*?\*\//g, "");
+
+    // Remove surrounding whitespace.
+    text = text.trim();
+
+    // Remove optional trailing semicolon.
+    text = text.replace(/;\s*$/, "");
+
+    // Require array brackets.
+    if (
+        !text.startsWith("[") ||
+        !text.endsWith("]")
+    ) {
+        throw new Error(
+            "Room must be enclosed in [ and ]."
+        );
+    }
+
+    text = text.slice(1, -1);
+
+    // Split only on commas outside B(...).
+    const tokens = [];
+
+    let current = "";
+    let depth = 0;
+
+    for (const character of text) {
+
+        if (character === "(")
+            depth++;
+
+        if (character === ")")
+            depth--;
+
+        if (depth < 0) {
+            throw new Error("Unmatched parenthesis.");
+        }
+
+        if (character === "," && depth === 0) {
+
+            if (current.trim()) {
+
+                tokens.push(current.trim());
+
+            }
+
+            current = "";
+
+        } else {
+
+            current += character;
+
+        }
+
+    }
+
+    if (depth !== 0) {
+        throw new Error("Unmatched parenthesis.");
+    }
+
+    if (current.trim()) {
+
+        tokens.push(current.trim());
+
+    }
+
+    if (tokens.length !== 81) {
+
+        throw new Error(
+            "Expected 81 room values, found " +
+            tokens.length + "."
+        );
+
+    }
+
+    return tokens.map(parseRoomValue);
+
+}
+
+
+/* =========================================================
+   APPLY PASTED ROOM ARRAY
+========================================================= */
+
+function applyRoomText() {
+
+    try {
+
+        const parsed = parseRoomArray(
+            roomText.value
+        );
+
+        room = parsed;
+
+        renderRoom();
+
+        showStatus("Room array loaded successfully.");
+
+    } catch (error) {
+
+        alert(
+            "Unable to parse room:\n" +
+            error.message
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   COPY ROOM ARRAY
+========================================================= */
+
+async function copyRoomText() {
+
+    try {
+
+        await navigator.clipboard.writeText(
+            roomText.value
+        );
+
+        showStatus("Room array copied.");
+
+    } catch (error) {
+
+        roomText.focus();
+        roomText.select();
+
+        showStatus(
+            "Text selected. Press Ctrl+C or Cmd+C."
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   STATUS
+========================================================= */
+
+function showStatus(message) {
+
+    statusElement.textContent = message;
+
+}
+
+
+/* =========================================================
+   INITIAL ROOM
+
+   ROOM 8 FROM THE DUNGEON DEFINITIONS
+========================================================= */
+
+room = [
+
+    0,0,0,0,1,0,0,0,0,
+    0,0,0,B(2,N),1,B(2,E),0,0,0,
+    0,0,B(2,N),1,1,1,B(2,E),0,0,
+    0,0,1,1,1,1,1,B(2,E),0,
+    0,0,1,1,1,1,1,1,1,
+    0,0,1,1,1,1,1,B(2,S),0,
+    0,0,B(2,W),1,1,1,B(2,S),0,0,
+    0,0,0,B(2,W),1,B(2,S),0,0,0,
+    0,0,0,0,1,0,0,0,0
+
+];
+
+
+/* =========================================================
+   INITIALIZE EDITOR
+========================================================= */
+
+function initializeEditor() {
+
+    initializeBlockPalette();
+
+    initializeRotationControls();
+
+    initializePainting();
+
+    renderRoom();
+
+}
+
+initializeEditor();
+
+</script>
+
+</body>
+</html>
