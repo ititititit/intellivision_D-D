@@ -1,0 +1,3989 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dungeon room designer</title>
+
+<style>
+:root {
+    color-scheme: dark;
+    --bg: #101619;
+    --panel: #1b2529;
+    --line: #34464b;
+    --text: #e4ece7;
+    --muted: #a9bbb5;
+    --accent: #e1bc71;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 system-ui, sans-serif;
+}
+
+header {
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px;
+}
+
+h1 {
+    font: 26px Georgia, serif;
+    margin: 0;
+    color: var(--accent);
+}
+
+h2 {
+    font-size: 15px;
+    margin: 0 0 12px;
+}
+
+p {
+    margin: 5px 0 14px;
+    color: var(--muted);
+}
+
+main {
+    display: grid;
+    grid-template-columns: 230px minmax(360px, 1fr) 370px;
+    gap: 16px;
+    padding: 20px;
+    max-width: 1600px;
+    margin: auto;
+}
+
+section, aside {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 16px;
+}
+
+label {
+    display: block;
+    color: var(--muted);
+    margin: 9px 0 3px;
+    font-size: 12px;
+}
+
+input, select, textarea, button {
+    font: inherit;
+    color: var(--text);
+    background: #111b20;
+    border: 1px solid #506168;
+    border-radius: 5px;
+    padding: 7px;
+    max-width: 100%;
+}
+
+input, select, textarea { width: 100%; }
+
+textarea {
+    font: 12px/1.5 monospace;
+    resize: vertical;
+}
+
+button { cursor: pointer; }
+
+button:hover, button.active {
+    border-color: var(--accent);
+    background: #394239;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.row {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.row > * { flex: 1; }
+
+.small {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    max-width: 576px;
+    aspect-ratio: 1;
+    margin: 12px auto;
+    background: #111;
+    touch-action: none;
+}
+
+.palette {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.palette button { padding: 5px; }
+
+.tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 12px;
+}
+
+.tabs button {
+    flex: 1;
+    padding: 6px 2px;
+    font-size: 12px;
+}
+
+.item {
+    display: flex;
+    gap: 5px;
+    margin: 5px 0;
+}
+
+.item button:first-child {
+    flex: 1;
+    text-align: left;
+}
+
+.badge { color: var(--accent); }
+
+#status {
+    padding: 10px 28px;
+    min-height: 40px;
+    color: var(--accent);
+    border-top: 1px solid var(--line);
+}
+
+.hidden { display: none; }
+
+.check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.check input { width: auto; }
+
+hr {
+    border: 0;
+    border-top: 1px solid var(--line);
+    margin: 16px 0;
+}
+
+@media (max-width: 1050px) {
+    main { grid-template-columns: 200px 1fr; }
+    .inspector { grid-column: 1 / -1; }
+}
+
+@media (max-width: 650px) {
+    main { display: block; padding: 10px; }
+    section, aside { margin-bottom: 10px; }
+    header { padding: 15px; }
+    canvas { max-width: 450px; }
+}
+</style>
+</head>
+
+
+
+<body>
+<header>
+    <div>
+        <h1>Dungeon room designer</h1>
+        <div class="small">
+            9 × 9 rooms · local coordinates · rotated preview
+        </div>
+    </div>
+    <button id="newRoom">New room</button>
+</header>
+
+<main>
+    <aside>
+        <h2>Room</h2>
+
+        <label for="roomName">Name</label>
+        <input id="roomName" value="Untitled room">
+
+        <label for="tool">Edit layer</label>
+        <select id="tool">
+            <option value="tiles">Paint tiles</option>
+            <option value="animatedCells">Animated tiles</option>
+            <option value="triggers">Triggers</option>
+            <option value="objects">Objects</option>
+        </select>
+
+        <label for="tileID">Terrain ID (0–63)</label>
+        <input id="tileID" type="number" min="0" max="63" value="1">
+
+        <label for="tileRotation">Terrain orientation</label>
+        <select id="tileRotation">
+            <option value="0">North</option>
+            <option value="1">East</option>
+            <option value="2">South</option>
+            <option value="3">West</option>
+        </select>
+
+        <div class="palette" id="palette"></div>
+
+        <p class="small">
+			Terrain uses game artwork and room block IDs.<br>
+			Pits: 39 = black, 40 = diagonal, 41 = curved corner.<br>
+			Object values are numeric game OBJECT IDs.
+        </p>
+
+        <hr>
+        <h2>Animation controller</h2>
+
+        <label class="check">
+            <input id="animationEnabled" type="checkbox">
+            Room has animation
+        </label>
+
+        <div id="controller"></div>
+
+        <hr>
+        <button id="saveDraft">Save browser draft</button>
+        <button id="loadDraft">Load draft</button>
+    </aside>
+
+    <section>
+        <div class="row">
+            <div>
+                <h2>Room canvas</h2>
+                <span id="selected" class="badge">Square 4, 4</span>
+            </div>
+
+            <div>
+                <label for="previewRotation">Preview rotation</label>
+                <select id="previewRotation">
+                    <option value="0">North · 0°</option>
+                    <option value="1">East · 90°</option>
+                    <option value="2">South · 180°</option>
+                    <option value="3">West · 270°</option>
+                </select>
+            </div>
+        </div>
+
+        <canvas
+            id="canvas"
+            width="576"
+            height="576"
+            aria-label="9 by 9 room; use square coordinate fields below for keyboard editing"
+        ></canvas>
+
+        <div class="row">
+            <div>
+                <label for="squareX">Local X</label>
+                <input id="squareX" type="number" min="0" max="8" value="4">
+            </div>
+            <div>
+                <label for="squareY">Local Y</label>
+                <input id="squareY" type="number" min="0" max="8" value="4">
+            </div>
+            <button id="selectSquare">Select square</button>
+            <button id="paintSquare">Paint selected</button>
+        </div>
+
+        <p class="small">
+            Click to paint terrain or select an extension.
+            Drag paints terrain.
+            A = animated tile, T = trigger, O = object.
+            Coordinates stay local when the preview rotates.
+        </p>
+
+        <hr>
+        <h2>Test room</h2>
+
+        <div class="row">
+            <button id="up">Run ↑</button>
+            <button id="down">Run ↓</button>
+            <button id="stop">Stop</button>
+            <button id="reset">Reset test</button>
+        </div>
+
+        <label for="scrub">
+            Counter <span id="counterLabel">0</span>
+        </label>
+        <input id="scrub" type="range" min="0" max="8" value="0">
+
+        <div class="row">
+            <button id="step">Step on selected</button>
+            <button id="arrow">Arrow at selected</button>
+        </div>
+
+        <p class="small" id="testLog">
+            Test actions affect the preview only.
+            Knowledge actions are logged.
+        </p>
+    </section>
+
+    <aside class="inspector">
+        <div class="tabs">
+            <button data-tab="animatedCells">Animation</button>
+            <button data-tab="triggers">Triggers</button>
+            <button data-tab="objects">Objects</button>
+            <button data-tab="data">Data</button>
+        </div>
+
+        <div id="extensionPanel">
+            <h2 id="panelTitle"></h2>
+            <div id="list"></div>
+            <button id="add">Add at selected square</button>
+            <div id="form"></div>
+        </div>
+
+        <div id="dataPanel" class="hidden">
+            <h2>Import / export</h2>
+
+            <p class="small">
+                JSON: name, 81 encoded tiles, and extensions.
+                JavaScript export provides ROOMS and ROOM_EXTENSIONS entries.
+                No runtime state is exported.
+            </p>
+
+            <div class="row">
+                <button id="exportJSON">Show JSON</button>
+                <button id="exportJS">Show JavaScript</button>
+            </div>
+
+            <label for="dataText">Room data</label>
+            <textarea id="dataText" rows="22" spellcheck="false"></textarea>
+
+            <div class="row">
+                <button id="copy">Copy text</button>
+                <button id="import">Import JSON</button>
+                <button id="download">Download JSON</button>
+            </div>
+
+            <label for="importFile">Open room JSON</label>
+            <input id="importFile" type="file" accept=".json,application/json">
+
+            <p class="small">
+                The game must associate exported extensions with the room ID.
+                Rotation for object artwork/facing and initial monster dispatch
+                still need the runtime changes identified in review.
+            </p>
+        </div>
+    </aside>
+</main>
+
+<div id="status" role="status">
+    Ready. Paint the room, then add extensions.
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   STATE AND HELPERS
+========================================================= */
+
+const $ = id => document.getElementById(id);
+const clone = value => structuredClone(value);
+
+const titles = {
+    animatedCells: "Animated tiles",
+    triggers: "Triggers",
+    objects: "Room objects"
+};
+
+const actionTypes = [
+    "startAnimation",
+    "stopAnimation",
+    "changeTile",
+    "changeObject",
+    "depositObject",
+    "depositMonster",
+    "addKnowledge"
+];
+
+let model;
+let selected = { x: 4, y: 4 };
+let tab = "animatedCells";
+let active = -1;
+let preview;
+let pointerDown = false;
+
+function defaultAnimation() {
+    return {
+        min: 0,
+        max: 4,
+        counter: 0,
+        direction: 1,
+        running: false,
+        mode: "once",
+        tickInterval: 350
+    };
+}
+
+function freshRoom() {
+    return {
+        name: "Untitled room",
+
+        tiles: Array.from({ length: 81 }, (_, index) => {
+            const x = index % 9;
+            const y = Math.floor(index / 9);
+
+            return x > 0 && y > 0 && x < 8 && y < 8
+                ? 1
+                : 0;
+        }),
+
+        extensions: {}
+    };
+}
+
+function status(text) {
+    $("status").textContent = text;
+}
+
+/* =========================================================
+   ROTATION
+
+   Definitions always retain original local coordinates.
+   Rotation applies only when displaying the preview.
+========================================================= */
+
+function rotate(x, y, rotation) {
+    for (let i = 0; i < rotation; i++) {
+        [x, y] = [8 - y, x];
+    }
+
+    return { x, y };
+}
+
+function unrotate(x, y, rotation) {
+    return rotate(x, y, (4 - rotation) % 4);
+}
+
+/* =========================================================
+   VALIDATION
+========================================================= */
+
+function validInteger(value, min, max, label) {
+    if (
+        !Number.isSafeInteger(value) ||
+        value < min ||
+        value > max
+    ) {
+        throw new Error(
+            label + " must be " + min + "–" + max
+        );
+    }
+}
+
+function validatePosition(object) {
+    validInteger(object.x, 0, 8, "X");
+    validInteger(object.y, 0, 8, "Y");
+}
+
+function isMnemonicList(value) {
+    return (
+        typeof value === "string" &&
+        Boolean(value.trim())
+    ) || (
+        Array.isArray(value) &&
+        value.length > 0 &&
+        value.every(item =>
+            typeof item === "string" &&
+            Boolean(item.trim())
+        )
+    );
+}
+
+function validateAction(action) {
+    if (!action || !actionTypes.includes(action.type)) {
+        throw new Error("Unknown action type");
+    }
+
+    if (
+        action.type === "startAnimation" &&
+        action.direction !== undefined &&
+        ![1, -1].includes(action.direction)
+    ) {
+        throw new Error(
+            "Animation direction must be 1 or -1"
+        );
+    }
+
+    if ([
+        "changeTile",
+        "changeObject",
+        "depositObject",
+        "depositMonster"
+    ].includes(action.type)) {
+        validatePosition(action);
+
+        validInteger(
+            action.rotation ?? 0,
+            0,
+            3,
+            "Action rotation"
+        );
+
+        if (action.type === "changeTile") {
+            validInteger(action.blockID, 0, 63, "Block ID");
+        } else {
+            validInteger(
+                action.value,
+                0,
+                1000000,
+                "Object value"
+            );
+        }
+
+        if (action.type === "changeObject") {
+            validInteger(
+                action.fromValue,
+                0,
+                1000000,
+                "Original object value"
+            );
+        }
+    }
+
+    if (action.type === "addKnowledge") {
+        if (![
+            "global",
+            "group",
+            "personal"
+        ].includes(action.scope)) {
+            throw new Error(
+                "Knowledge scope must be global, group, or personal"
+            );
+        }
+
+        if (!isMnemonicList(action.mnemonics)) {
+            throw new Error(
+                "Knowledge needs mnemonic strings"
+            );
+        }
+
+        if (
+            action.scope === "personal" &&
+            !isMnemonicList(action.ids)
+        ) {
+            throw new Error(
+                "Personal knowledge needs IDs"
+            );
+        }
+
+        if (
+            action.scope === "group" &&
+            (
+                typeof action.id !== "string" ||
+                !action.id
+            )
+        ) {
+            throw new Error(
+                "Group knowledge needs an ID"
+            );
+        }
+    }
+}
+
+function validateRoom(data) {
+    if (
+        !data ||
+        typeof data.name !== "string" ||
+        !Array.isArray(data.tiles) ||
+        data.tiles.length !== 81 ||
+        !data.extensions ||
+        typeof data.extensions !== "object" ||
+        Array.isArray(data.extensions)
+    ) {
+        throw new Error(
+            "Expected name, 81 tiles, and extensions object."
+        );
+    }
+
+    data.tiles.forEach(value => {
+        validInteger(value, 0, 255, "Encoded tile");
+    });
+
+    const extensions = data.extensions;
+    const animation = extensions.animation;
+
+    if (animation) {
+        for (const key of ["min", "max", "counter"]) {
+            validInteger(
+                animation[key],
+                -1000000,
+                1000000,
+                key
+            );
+        }
+
+        if (
+            animation.min > animation.max ||
+            animation.counter < animation.min ||
+            animation.counter > animation.max ||
+            ![1, -1].includes(animation.direction) ||
+            !["once", "pingPong"].includes(animation.mode) ||
+            typeof animation.running !== "boolean" ||
+            !Number.isFinite(animation.tickInterval) ||
+            animation.tickInterval < 1
+        ) {
+            throw new Error(
+                "Invalid animation controller"
+            );
+        }
+    }
+
+    for (const key of [
+        "animatedCells",
+        "objects",
+        "triggers"
+    ]) {
+        if (
+            extensions[key] !== undefined &&
+            !Array.isArray(extensions[key])
+        ) {
+            throw new Error(key + " must be an array");
+        }
+
+        for (const entry of extensions[key] || []) {
+            validatePosition(entry);
+
+            if (key === "animatedCells") {
+                if (!animation) {
+                    throw new Error(
+                        "Animated tiles need a controller"
+                    );
+                }
+
+                validInteger(
+                    entry.rotation,
+                    0,
+                    3,
+                    "Rotation"
+                );
+
+                validInteger(
+                    entry.offset,
+                    -1000000,
+                    1000000,
+                    "Offset"
+                );
+
+                if (
+                    !Array.isArray(entry.pattern) ||
+                    !entry.pattern.length
+                ) {
+                    throw new Error(
+                        "Pattern cannot be empty"
+                    );
+                }
+
+                entry.pattern.forEach(id => {
+                    validInteger(id, 0, 63, "Pattern ID");
+                });
+
+                if (![
+                    "clamp",
+                    "wrap"
+                ].includes(entry.sampling)) {
+                    throw new Error("Invalid sampling");
+                }
+            }
+
+            if (key === "objects") {
+                validInteger(
+                    entry.value,
+                    0,
+                    1000000,
+                    "Object value"
+                );
+
+                validInteger(
+                    entry.rotation ?? 0,
+                    0,
+                    3,
+                    "Object rotation"
+                );
+            }
+
+            if (key === "triggers") {
+                if (
+                    !Array.isArray(entry.activation) ||
+                    !entry.activation.length ||
+                    entry.activation.some(type =>
+                        !["step", "arrow"].includes(type)
+                    )
+                ) {
+                    throw new Error(
+                        "Select step and/or arrow activation"
+                    );
+                }
+
+                if (
+                    typeof entry.once !== "boolean" ||
+                    !Array.isArray(entry.actions)
+                ) {
+                    throw new Error("Invalid trigger");
+                }
+
+                entry.actions.forEach(validateAction);
+            }
+        }
+    }
+
+    for (const key of ["animatedCells", "objects"]) {
+        const seen = new Set();
+
+        for (const entry of extensions[key] || []) {
+            const position = entry.x + "," + entry.y;
+
+            if (seen.has(position)) {
+                throw new Error(
+                    "Only one " + key +
+                    " entry per square in this editor"
+                );
+            }
+
+            seen.add(position);
+        }
+    }
+
+    return data;
+}
+
+/* =========================================================
+   TEST STATE
+========================================================= */
+
+function resetTest() {
+    preview = {
+        tiles: [...model.tiles],
+        objects: clone(model.extensions.objects || []),
+        fired: new Set(),
+
+        animation: model.extensions.animation
+            ? {
+                ...model.extensions.animation,
+                elapsed: 0
+            }
+            : null
+    };
+
+    applyFrames();
+
+    $("testLog").textContent =
+        "Preview reset to designer initial state.";
+
+    draw();
+}
+
+function applyFrames() {
+    const animation = preview?.animation;
+
+    if (!animation)
+        return;
+
+    for (
+        const cell of
+        model.extensions.animatedCells || []
+    ) {
+        let index =
+            animation.counter -
+            animation.min +
+            cell.offset;
+
+        if (cell.sampling === "wrap") {
+            index =
+                (
+                    (index % cell.pattern.length) +
+                    cell.pattern.length
+                ) % cell.pattern.length;
+        } else {
+            index = Math.max(
+                0,
+                Math.min(
+                    cell.pattern.length - 1,
+                    index
+                )
+            );
+        }
+
+        preview.tiles[cell.y * 9 + cell.x] =
+            cell.pattern[index] |
+            (cell.rotation << 6);
+    }
+}
+
+/* =========================================================
+   DRAW ROOM
+
+   Schematic rendering for this first editor version.
+========================================================= */
+
+function draw() {
+    if (!preview)
+        return;
+
+    const canvas = $("canvas");
+    const ctx = canvas.getContext("2d");
+    const rotation = Number($("previewRotation").value);
+    const size = 64;
+
+    ctx.clearRect(0, 0, 576, 576);
+
+    for (let y = 0; y < 9; y++) {
+        for (let x = 0; x < 9; x++) {
+            const position = rotate(x, y, rotation);
+            const value = preview.tiles[y * 9 + x];
+            const id = value & 63;
+
+            const orientation =
+                ((value >> 6) + rotation) & 3;
+
+            ctx.fillStyle =
+                id === 0 ? "#345d43" :
+                id === 1 ? "#b99a68" :
+                id === 2 ? "#7c8b65" :
+                `hsl(${(id * 39) % 360} 25% 34%)`;
+
+            ctx.fillRect(
+                position.x * size,
+                position.y * size,
+                size,
+                size
+            );
+
+            if (id === 2) {
+                ctx.fillStyle = "#b99a68";
+
+                ctx.save();
+
+                ctx.translate(
+                    (position.x + .5) * size,
+                    (position.y + .5) * size
+                );
+
+                ctx.rotate(orientation * Math.PI / 2);
+
+                ctx.beginPath();
+                ctx.moveTo(32, -32);
+                ctx.lineTo(32, 32);
+                ctx.lineTo(-32, 32);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            ctx.strokeStyle = "#10161966";
+
+            ctx.strokeRect(
+                position.x * size,
+                position.y * size,
+                size,
+                size
+            );
+
+            ctx.fillStyle =
+                id === 1 ? "#302c21" : "#e4ece7";
+
+            ctx.font = "12px monospace";
+
+            ctx.fillText(
+                id + " " + ["N", "E", "S", "W"][orientation],
+                position.x * size + 5,
+                position.y * size + 16
+            );
+        }
+    }
+
+    const layers = [
+        ["animatedCells", "A", "#ffe09b"],
+        ["triggers", "T", "#85dfff"],
+        ["objects", "O", "#fbb2ec"]
+    ];
+
+    for (const [key, letter, color] of layers) {
+        const entries = key === "objects"
+            ? preview.objects
+            : model.extensions[key] || [];
+
+        for (const entry of entries) {
+            const position = rotate(
+                entry.x,
+                entry.y,
+                rotation
+            );
+
+            const offsetY =
+                key === "animatedCells" ? 32 :
+                key === "triggers" ? 47 :
+                61;
+
+            ctx.fillStyle = color;
+            ctx.font = "bold 13px monospace";
+
+            ctx.fillText(
+                letter +
+                (key === "objects" ? ":" + entry.value : ""),
+                position.x * size + 4,
+                position.y * size + offsetY
+            );
+        }
+    }
+
+    const selection = rotate(
+        selected.x,
+        selected.y,
+        rotation
+    );
+
+    ctx.strokeStyle = "#fff1ae";
+    ctx.lineWidth = 3;
+
+    ctx.strokeRect(
+        selection.x * size + 2,
+        selection.y * size + 2,
+        size - 4,
+        size - 4
+    );
+
+    ctx.lineWidth = 1;
+
+    $("selected").textContent =
+        "Local square " + selected.x + ", " + selected.y;
+
+    $("squareX").value = selected.x;
+    $("squareY").value = selected.y;
+
+    const animation = preview.animation;
+
+    $("scrub").min = animation?.min ?? 0;
+    $("scrub").max = animation?.max ?? 1;
+    $("scrub").value = animation?.counter ?? 0;
+
+    $("counterLabel").textContent =
+        (animation?.counter ?? 0) +
+        (animation?.running ? " · running" : " · stopped");
+}
+
+/* =========================================================
+   FORM FIELD HELPER
+========================================================= */
+
+function field(
+    parent,
+    label,
+    type,
+    value,
+    change,
+    options
+) {
+    const labelElement = document.createElement("label");
+    labelElement.textContent = label;
+
+    const element = document.createElement(
+        type === "select" ? "select" :
+        type === "textarea" ? "textarea" :
+        "input"
+    );
+
+    if (type === "select") {
+        for (const [optionValue, text] of options) {
+            const option = document.createElement("option");
+            option.value = optionValue;
+            option.textContent = text;
+            element.append(option);
+        }
+    } else if (type !== "textarea") {
+        element.type = type;
+    }
+
+    if (type === "checkbox") {
+        element.checked = value;
+    } else {
+        element.value = value ?? "";
+    }
+
+    element.setAttribute("aria-label", label);
+
+    if (type === "textarea")
+        element.rows = 5;
+
+    element.onchange = () => {
+        change(
+            type === "checkbox" ? element.checked :
+            type === "number" ? Number(element.value) :
+            element.value
+        );
+    };
+
+    parent.append(labelElement, element);
+
+    return element;
+}
+
+/* =========================================================
+   CONTROLLER FORM
+========================================================= */
+
+function controllerForm() {
+    const animation = model.extensions.animation;
+
+    $("animationEnabled").checked = Boolean(animation);
+    $("controller").replaceChildren();
+
+    if (!animation)
+        return;
+
+    const fields = [
+        ["min", "Minimum", "number"],
+        ["max", "Maximum", "number"],
+        ["counter", "Initial counter", "number"],
+
+        [
+            "direction",
+            "Initial direction",
+            "select",
+            [["1", "Up"], ["-1", "Down"]]
+        ],
+
+        [
+            "mode",
+            "Endpoint behavior",
+            "select",
+            [
+                ["once", "Stop"],
+                ["pingPong", "Reverse continuously"]
+            ]
+        ],
+
+        ["tickInterval", "Tick interval (ms)", "number"],
+        ["running", "Initially running", "checkbox"]
+    ];
+
+    for (const [key, label, type, options] of fields) {
+        field(
+            $("controller"),
+            label,
+            type,
+            animation[key],
+
+            value => {
+                const old = animation[key];
+
+                animation[key] = key === "direction"
+                    ? Number(value)
+                    : value;
+
+                try {
+                    validateRoom(model);
+                    resetTest();
+                } catch (error) {
+                    animation[key] = old;
+                    status(error.message);
+                    controllerForm();
+                }
+            },
+
+            options
+        );
+    }
+}
+
+/* =========================================================
+   EXTENSION LIST
+========================================================= */
+
+function listPanel() {
+    if (tab === "data")
+        return;
+
+    const entries = model.extensions[tab] || [];
+
+    $("panelTitle").textContent = titles[tab];
+    $("list").replaceChildren();
+
+    entries.forEach((entry, index) => {
+        const row = document.createElement("div");
+        row.className = "item";
+
+        const button = document.createElement("button");
+
+        button.textContent =
+            (index + 1) +
+            ". (" + entry.x + ", " + entry.y + ") " +
+            (
+                tab === "objects"
+                    ? "ID " + entry.value
+                    : tab === "animatedCells"
+                        ? entry.pattern.join(" → ")
+                        : entry.activation.join(" + ")
+            );
+
+        button.classList.toggle(
+            "active",
+            index === active
+        );
+
+        button.onclick = () => {
+            active = index;
+            selected = { x: entry.x, y: entry.y };
+            listPanel();
+            draw();
+        };
+
+        const remove = document.createElement("button");
+        remove.textContent = "×";
+
+        remove.setAttribute(
+            "aria-label",
+            "Delete entry " + (index + 1)
+        );
+
+        remove.onclick = () => {
+            entries.splice(index, 1);
+
+            if (!entries.length)
+                delete model.extensions[tab];
+
+            active = -1;
+            listPanel();
+            resetTest();
+        };
+
+        row.append(button, remove);
+        $("list").append(row);
+    });
+
+    entryForm();
+}
+
+function changeEntry(entry, key, value) {
+    const old = entry[key];
+    entry[key] = value;
+
+    try {
+        validateRoom(model);
+        resetTest();
+        listPanel();
+        status("Updated.");
+    } catch (error) {
+        entry[key] = old;
+        status(error.message);
+        entryForm();
+    }
+}
+
+/* =========================================================
+   EXTENSION FORM
+========================================================= */
+
+function entryForm() {
+    const root = $("form");
+    root.replaceChildren();
+
+    const entry = model.extensions[tab]?.[active];
+
+    if (!entry)
+        return;
+
+    field(
+        root,
+        "Local X",
+        "number",
+        entry.x,
+        value => changeEntry(entry, "x", value)
+    );
+
+    field(
+        root,
+        "Local Y",
+        "number",
+        entry.y,
+        value => changeEntry(entry, "y", value)
+    );
+
+    const rotations = [
+        ["0", "North"],
+        ["1", "East"],
+        ["2", "South"],
+        ["3", "West"]
+    ];
+
+    if (tab === "animatedCells") {
+        field(
+            root,
+            "Rotation",
+            "select",
+            entry.rotation,
+            value => changeEntry(entry, "rotation", Number(value)),
+            rotations
+        );
+
+        field(
+            root,
+            "Pattern IDs (comma separated)",
+            "text",
+            entry.pattern.join(","),
+
+            value => {
+                if (!value.trim()) {
+                    status("Pattern cannot be empty");
+                    return;
+                }
+
+                const pattern = value.split(",").map(item =>
+                    item.trim() === ""
+                        ? NaN
+                        : Number(item)
+                );
+
+                changeEntry(entry, "pattern", pattern);
+            }
+        );
+
+        field(
+            root,
+            "Offset (positive advances pattern)",
+            "number",
+            entry.offset,
+            value => changeEntry(entry, "offset", value)
+        );
+
+        field(
+            root,
+            "Pattern ends",
+            "select",
+            entry.sampling,
+            value => changeEntry(entry, "sampling", value),
+            [
+                ["clamp", "Hold endpoint"],
+                ["wrap", "Wrap pattern"]
+            ]
+        );
+    }
+
+    if (tab === "objects") {
+        field(
+            root,
+            "Object value (OBJECT ID)",
+            "number",
+            entry.value,
+            value => changeEntry(entry, "value", value)
+        );
+
+        field(
+            root,
+            "Rotation metadata",
+            "select",
+            entry.rotation ?? 0,
+            value => changeEntry(entry, "rotation", Number(value)),
+            rotations
+        );
+
+        const note = document.createElement("p");
+        note.className = "small";
+
+        note.textContent =
+            "Position rotates now. Artwork orientation requires " +
+            "the object adapter / renderer update.";
+
+        root.append(note);
+    }
+
+    if (tab === "triggers") {
+        for (const activation of ["step", "arrow"]) {
+            field(
+                root,
+                activation === "step" ? "Player step" : "Arrow hit",
+                "checkbox",
+                entry.activation.includes(activation),
+
+                checked => {
+                    const activations = checked
+                        ? [...new Set([
+                            ...entry.activation,
+                            activation
+                        ])]
+                        : entry.activation.filter(
+                            value => value !== activation
+                        );
+
+                    changeEntry(
+                        entry,
+                        "activation",
+                        activations
+                    );
+                }
+            );
+        }
+
+        field(
+            root,
+            "Activate once",
+            "checkbox",
+            entry.once,
+            value => changeEntry(entry, "once", value)
+        );
+
+        field(
+            root,
+            "Enabled",
+            "checkbox",
+            entry.enabled !== false,
+            value => changeEntry(entry, "enabled", value)
+        );
+
+        const note = document.createElement("p");
+        note.className = "small";
+
+        note.textContent =
+            "Actions execute in listed order. Target positions " +
+            "use original local coordinates.";
+
+        root.append(note);
+
+        const actionSelect = document.createElement("select");
+        actionSelect.setAttribute("aria-label", "Action type");
+
+        for (const type of actionTypes) {
+            const option = document.createElement("option");
+            option.value = type;
+            option.textContent = type;
+            actionSelect.append(option);
+        }
+
+        const append = document.createElement("button");
+        append.textContent = "Append action";
+
+        append.onclick = () => {
+            const type = actionSelect.value;
+            const action = { type };
+
+            if (type === "startAnimation")
+                action.direction = 1;
+
+            if ([
+                "changeTile",
+                "changeObject",
+                "depositObject",
+                "depositMonster"
+            ].includes(type)) {
+                Object.assign(action, {
+                    x: selected.x,
+                    y: selected.y,
+                    rotation: 0
+                });
+
+                if (type === "changeTile")
+                    action.blockID = 1;
+                else
+                    action.value = 0;
+            }
+
+            if (type === "changeObject")
+                action.fromValue = 0;
+
+            if (type === "addKnowledge") {
+                Object.assign(action, {
+                    scope: "global",
+                    mnemonics: ["switch_activated"]
+                });
+            }
+
+            entry.actions.push(action);
+            entryForm();
+            resetTest();
+        };
+
+        root.append(actionSelect, append);
+
+        const actionsText = field(
+            root,
+            "Actions JSON (edit, reorder, or remove entries)",
+            "textarea",
+            JSON.stringify(entry.actions, null, 2),
+            () => {}
+        );
+
+        actionsText.rows = 15;
+
+        const apply = document.createElement("button");
+        apply.textContent = "Apply actions";
+
+        apply.onclick = () => {
+            try {
+                const actions = JSON.parse(actionsText.value);
+
+                if (!Array.isArray(actions)) {
+                    throw new Error(
+                        "Actions must be an array"
+                    );
+                }
+
+                actions.forEach(validateAction);
+
+                changeEntry(entry, "actions", actions);
+            } catch (error) {
+                status(error.message);
+            }
+        };
+
+        root.append(apply);
+    }
+}
+
+/* =========================================================
+   TABS AND ADDING EXTENSIONS
+========================================================= */
+
+function setTab(value) {
+    tab = value;
+    active = -1;
+
+    $("extensionPanel").classList.toggle(
+        "hidden",
+        value === "data"
+    );
+
+    $("dataPanel").classList.toggle(
+        "hidden",
+        value !== "data"
+    );
+
+    document.querySelectorAll("[data-tab]").forEach(button => {
+        button.classList.toggle(
+            "active",
+            button.dataset.tab === value
+        );
+    });
+
+    if (value !== "data") {
+        $("tool").value = value;
+        listPanel();
+    } else {
+        $("dataText").value =
+            JSON.stringify(model, null, 2);
+    }
+}
+
+function addExtension() {
+    if (tab === "data")
+        return;
+
+    const entries = model.extensions[tab] ??= [];
+
+    const existing = entries.findIndex(entry =>
+        entry.x === selected.x &&
+        entry.y === selected.y
+    );
+
+    if (existing >= 0) {
+        active = existing;
+        listPanel();
+        status("Selected existing entry at this square.");
+        return;
+    }
+
+    if (tab === "animatedCells") {
+        model.extensions.animation ??= defaultAnimation();
+        controllerForm();
+
+        entries.push({
+            ...selected,
+            rotation: 0,
+            pattern: [1, 0],
+            offset: 0,
+            sampling: "clamp"
+        });
+    }
+
+    if (tab === "objects") {
+        entries.push({
+            ...selected,
+            value: 0,
+            rotation: 0
+        });
+    }
+
+    if (tab === "triggers") {
+        entries.push({
+            ...selected,
+            activation: ["step"],
+            once: true,
+            actions: []
+        });
+    }
+
+    active = entries.length - 1;
+    listPanel();
+    resetTest();
+}
+
+/* =========================================================
+   TERRAIN PAINTING AND CANVAS SELECTION
+========================================================= */
+
+function paint() {
+    const id = Number($("tileID").value);
+
+    try {
+        validInteger(id, 0, 63, "Tile ID");
+
+        model.tiles[selected.y * 9 + selected.x] =
+            id |
+            (Number($("tileRotation").value) << 6);
+
+        resetTest();
+    } catch (error) {
+        status(error.message);
+    }
+}
+
+function canvasHit(event) {
+    const bounds = $("canvas").getBoundingClientRect();
+
+    const x = Math.floor(
+        (event.clientX - bounds.left) / bounds.width * 9
+    );
+
+    const y = Math.floor(
+        (event.clientY - bounds.top) / bounds.height * 9
+    );
+
+    if (x < 0 || y < 0 || x > 8 || y > 8)
+        return;
+
+    selected = unrotate(
+        x,
+        y,
+        Number($("previewRotation").value)
+    );
+
+    const tool = $("tool").value;
+
+    if (tool === "tiles") {
+        paint();
+    } else {
+        if (tab !== tool)
+            setTab(tool);
+
+        active = (model.extensions[tool] || []).findIndex(entry =>
+            entry.x === selected.x &&
+            entry.y === selected.y
+        );
+
+        listPanel();
+        draw();
+    }
+}
+
+/* =========================================================
+   PREVIEW TRIGGER EXECUTION
+
+   Uses room-local test state.
+   Monster deposits display as markers without AI.
+   Knowledge actions are logged rather than changing the game.
+========================================================= */
+
+function activatePreview(kind) {
+    const messages = [];
+
+    (model.extensions.triggers || []).forEach(
+        (trigger, index) => {
+            if (
+                trigger.enabled === false ||
+                trigger.x !== selected.x ||
+                trigger.y !== selected.y ||
+                !trigger.activation.includes(kind) ||
+                (
+                    trigger.once &&
+                    preview.fired.has(index)
+                )
+            ) {
+                return;
+            }
+
+            for (const action of trigger.actions) {
+                const animation = preview.animation;
+
+                switch (action.type) {
+                    case "startAnimation":
+                        if (animation) {
+                            animation.direction =
+                                action.direction ??
+                                animation.direction;
+
+                            animation.running = true;
+                        }
+                        break;
+
+                    case "stopAnimation":
+                        if (animation)
+                            animation.running = false;
+                        break;
+
+                    case "changeTile":
+                        preview.tiles[
+                            action.y * 9 + action.x
+                        ] = action.blockID |
+                            ((action.rotation ?? 0) << 6);
+                        break;
+
+                    case "depositObject":
+                    case "depositMonster":
+                        preview.objects.push({ ...action });
+                        break;
+
+                    case "changeObject": {
+                        const object = preview.objects.find(entry =>
+                            entry.x === action.x &&
+                            entry.y === action.y &&
+                            entry.value === action.fromValue
+                        );
+
+                        if (object)
+                            object.value = action.value;
+
+                        break;
+                    }
+
+                    case "addKnowledge":
+                        messages.push(
+                            "Knowledge " +
+                            action.scope +
+                            ": " +
+                            JSON.stringify(action.mnemonics)
+                        );
+                        break;
+                }
+            }
+
+            preview.fired.add(index);
+
+            messages.push(
+                "Trigger " + (index + 1) + " activated"
+            );
+        }
+    );
+
+    $("testLog").textContent =
+        messages.join(" · ") ||
+        "No eligible trigger on this square.";
+
+    draw();
+}
+
+/* =========================================================
+   LOAD AND EXPORT
+========================================================= */
+
+function exportModel() {
+    validateRoom(model);
+    return clone(model);
+}
+
+function loadRoom(data) {
+    validateRoom(data);
+
+    model = clone(data);
+    selected = { x: 4, y: 4 };
+    active = -1;
+
+    $("roomName").value = model.name;
+
+    controllerForm();
+    listPanel();
+    resetTest();
+
+    if (tab === "data") {
+        $("dataText").value =
+            JSON.stringify(model, null, 2);
+    }
+
+    status("Room loaded.");
+}
+
+/* =========================================================
+   CANVAS EVENTS
+========================================================= */
+
+$("canvas").onpointerdown = event => {
+    pointerDown = true;
+    $("canvas").setPointerCapture(event.pointerId);
+    canvasHit(event);
+};
+
+$("canvas").onpointermove = event => {
+    if (pointerDown && $("tool").value === "tiles")
+        canvasHit(event);
+};
+
+$("canvas").onpointerup = () => {
+    pointerDown = false;
+};
+
+$("canvas").onpointercancel = () => {
+    pointerDown = false;
+};
+
+/* =========================================================
+   EDITING EVENTS
+========================================================= */
+
+$("roomName").onchange = () => {
+    model.name = $("roomName").value;
+};
+
+$("previewRotation").onchange = draw;
+
+$("tool").onchange = () => {
+    if ($("tool").value !== "tiles")
+        setTab($("tool").value);
+};
+
+document.querySelectorAll("[data-tab]").forEach(button => {
+    button.onclick = () => setTab(button.dataset.tab);
+});
+
+$("add").onclick = addExtension;
+$("paintSquare").onclick = paint;
+
+$("selectSquare").onclick = () => {
+    try {
+        const position = {
+            x: Number($("squareX").value),
+            y: Number($("squareY").value)
+        };
+
+        validatePosition(position);
+        selected = position;
+        draw();
+    } catch (error) {
+        status(error.message);
+        draw();
+    }
+};
+
+$("animationEnabled").onchange = () => {
+    if ($("animationEnabled").checked) {
+        model.extensions.animation = defaultAnimation();
+    } else if (model.extensions.animatedCells?.length) {
+        $("animationEnabled").checked = true;
+
+        status(
+            "Remove animated tiles before removing their controller."
+        );
+
+        return;
+    } else {
+        delete model.extensions.animation;
+    }
+
+    controllerForm();
+    resetTest();
+};
+
+/* =========================================================
+   PREVIEW CONTROLS
+========================================================= */
+
+$("up").onclick = () => {
+    if (preview.animation) {
+        preview.animation.direction = 1;
+        preview.animation.running = true;
+        draw();
+    } else {
+        status("Enable a room animation controller first.");
+    }
+};
+
+$("down").onclick = () => {
+    if (preview.animation) {
+        preview.animation.direction = -1;
+        preview.animation.running = true;
+        draw();
+    }
+};
+
+$("stop").onclick = () => {
+    if (preview.animation)
+        preview.animation.running = false;
+
+    draw();
+};
+
+$("reset").onclick = resetTest;
+
+$("scrub").oninput = () => {
+    if (preview.animation) {
+        preview.animation.counter =
+            Number($("scrub").value);
+
+        preview.animation.running = false;
+
+        applyFrames();
+        draw();
+    }
+};
+
+$("step").onclick = () => activatePreview("step");
+$("arrow").onclick = () => activatePreview("arrow");
+
+/* =========================================================
+   SIMPLE TERRAIN PALETTE
+========================================================= */
+
+for (let id = 0; id < 16; id++) {
+    const button = document.createElement("button");
+    button.textContent = id;
+
+    button.onclick = () => {
+        $("tileID").value = id;
+        $("tool").value = "tiles";
+    };
+
+    $("palette").append(button);
+}
+
+/* =========================================================
+   NEW ROOM AND BROWSER DRAFT
+========================================================= */
+
+$("newRoom").onclick = () => {
+    if (confirm("Replace the current room with a new room?"))
+        loadRoom(freshRoom());
+};
+
+$("saveDraft").onclick = () => {
+    try {
+        localStorage.setItem(
+            "dungeon-room-editor-v1",
+            JSON.stringify(exportModel())
+        );
+
+        status("Draft saved in this browser.");
+    } catch (error) {
+        status(error.message);
+    }
+};
+
+$("loadDraft").onclick = () => {
+    try {
+        const saved = localStorage.getItem(
+            "dungeon-room-editor-v1"
+        );
+
+        if (!saved)
+            throw new Error("No browser draft saved");
+
+        loadRoom(JSON.parse(saved));
+    } catch (error) {
+        status(error.message);
+    }
+};
+
+/* =========================================================
+   IMPORT / EXPORT EVENTS
+========================================================= */
+
+$("exportJSON").onclick = () => {
+    try {
+        $("dataText").value =
+            JSON.stringify(exportModel(), null, 2);
+
+        status("JSON ready.");
+    } catch (error) {
+        status(error.message);
+    }
+};
+
+$("exportJS").onclick = () => {
+    try {
+        const data = exportModel();
+
+        const rows = Array.from(
+            { length: 9 },
+
+            (_, y) =>
+                "    " +
+                data.tiles.slice(y * 9, y * 9 + 9).join(",")
+        );
+
+        $("dataText").value =
+            "// " + data.name.replace(/[\r\n]/g, " ") +
+            "\n// Add this array as one ROOMS entry:\n[\n" +
+            rows.join(",\n") +
+            "\n]\n\n// Matching ROOM_EXTENSIONS entry:\n" +
+            JSON.stringify(data.extensions, null, 2);
+
+        status(
+            "JavaScript entries ready. " +
+            "JSON import accepts the JSON export."
+        );
+    } catch (error) {
+        status(error.message);
+    }
+};
+
+$("copy").onclick = async () => {
+    try {
+        await navigator.clipboard.writeText(
+            $("dataText").value
+        );
+
+        status("Copied.");
+    } catch {
+        $("dataText").focus();
+        $("dataText").select();
+
+        status(
+            "Text selected. Press Ctrl+C or Command+C."
+        );
+    }
+};
+
+$("import").onclick = () => {
+    try {
+        loadRoom(JSON.parse($("dataText").value));
+    } catch (error) {
+        status(error.message);
+    }
+};
+
+$("download").onclick = () => {
+    try {
+        const data = exportModel();
+
+        const url = URL.createObjectURL(
+            new Blob(
+                [JSON.stringify(data, null, 2)],
+                { type: "application/json" }
+            )
+        );
+
+        const link = document.createElement("a");
+
+        link.href = url;
+
+        link.download =
+            (
+                data.name.replace(/[^a-z0-9_-]/gi, "_") ||
+                "room"
+            ) + ".json";
+
+        link.click();
+
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+        }, 1000);
+    } catch (error) {
+        status(error.message);
+    }
+};
+
+$("importFile").onchange = async () => {
+    try {
+        const file = $("importFile").files[0];
+
+        if (file)
+            loadRoom(JSON.parse(await file.text()));
+    } catch (error) {
+        status(error.message);
+    } finally {
+        $("importFile").value = "";
+    }
+};
+
+/* =========================================================
+   PREVIEW ANIMATION LOOP
+========================================================= */
+
+let lastTime = performance.now();
+
+function tick(now) {
+    const deltaTime = Math.min(now - lastTime, 1000);
+    lastTime = now;
+
+    const animation = preview?.animation;
+
+    if (animation?.running) {
+        if (animation.min === animation.max) {
+            animation.running = false;
+        } else {
+            animation.elapsed += deltaTime;
+
+            while (
+                animation.running &&
+                animation.elapsed >= animation.tickInterval
+            ) {
+                animation.elapsed -= animation.tickInterval;
+
+                animation.counter = Math.max(
+                    animation.min,
+                    Math.min(
+                        animation.max,
+                        animation.counter + animation.direction
+                    )
+                );
+
+                applyFrames();
+
+                const atEnd =
+                    (
+                        animation.direction > 0 &&
+                        animation.counter === animation.max
+                    ) ||
+                    (
+                        animation.direction < 0 &&
+                        animation.counter === animation.min
+                    );
+
+                if (atEnd) {
+                    if (animation.mode === "pingPong") {
+                        animation.direction *= -1;
+                    } else {
+                        animation.running = false;
+                        animation.elapsed = 0;
+                    }
+                }
+            }
+        }
+
+        draw();
+    }
+
+    requestAnimationFrame(tick);
+}
+
+/* =========================================================
+   INITIALIZE
+========================================================= */
+
+loadRoom(freshRoom());
+setTab("animatedCells");
+requestAnimationFrame(tick);
+</script>
+
+<!-- Hidden canvas used by the existing game renderer. -->
+<canvas id="game" hidden></canvas>
+
+<script src="sound.js"></script>
+
+<script>
+const GAME_SEED = 12345;
+const GAME_DUNGEON_COLOR = "red";
+</script>
+
+<script src="dungeon_generator.js"></script>
+<script src="dungeon_placement.js"></script>
+<script src="dungeon_definitions.js"></script>
+<script src="dungeon_render.js"></script>
+<script>
+"use strict";
+
+/* =========================================================
+   ADD PIT TILES TO THE EDITOR
+
+   Room block IDs: 38–60.
+   Sprite IDs:     23–45.
+
+   Existing room block IDs remain unchanged.
+========================================================= */
+
+(function addPitTileMappings() {
+
+    if (
+        typeof SPRITE === "undefined" ||
+        typeof SPRITES === "undefined" ||
+        typeof BLOCK_SPRITES === "undefined"
+    ) {
+        throw new Error(
+            "Load dungeon_definitions.js before adding pit tiles."
+        );
+    }
+
+    const pitNames = [
+        "PIT_WALL",
+        "PIT_FLOOR",
+        "PIT_DIAGONAL",
+        "PIT_CURVED_CORNER",
+        "PIT_RUGGED_CORNER",
+        "PIT_RUGGED_RIGHT_EDGE",
+
+        "PIT_OPENING_1",
+        "PIT_OPENING_2",
+        "PIT_OPENING_3",
+        "PIT_OPENING_4",
+
+        "PIT_CLOSING_1",
+        "PIT_CLOSING_2",
+        "PIT_CLOSING_3",
+        "PIT_CLOSING_4",
+
+        "PIT_SLIDING_1",
+        "PIT_SLIDING_2",
+        "PIT_SLIDING_3",
+        "PIT_SLIDING_4",
+        "PIT_SLIDING_5",
+        "PIT_SLIDING_6",
+        "PIT_SLIDING_7",
+        "PIT_SLIDING_8",
+
+        "PIT_INVERTED_CURVED_CORNER"
+    ];
+
+    const pitSprites = pitNames.map(name => {
+
+        const spriteID = SPRITE[name];
+
+        if (
+            !Number.isInteger(spriteID) ||
+            !SPRITES[spriteID]
+        ) {
+            throw new Error(
+                "Missing pit sprite: " + name +
+                ". Update dungeon_definitions.js."
+            );
+        }
+
+        return spriteID;
+    });
+
+    // Add only if the game definitions have not added them.
+    if (BLOCK_SPRITES.length === 38) {
+        BLOCK_SPRITES.push(...pitSprites);
+    } else {
+        // Confirm the existing mappings match the game IDs.
+        pitSprites.forEach((spriteID, index) => {
+
+            const blockID = 38 + index;
+
+            if (BLOCK_SPRITES[blockID] !== spriteID) {
+                throw new Error(
+                    "Unexpected pit mapping at room block " +
+                    blockID
+                );
+            }
+        });
+    }
+
+})();
+</script>
+<script>
+"use strict";
+
+/* =========================================================
+   CONNECT GAME GRAPHICS TO THE ROOM EDITOR
+
+   Uses the existing renderer on its hidden game canvas,
+   then copies each rendered sprite into the editor.
+
+   The game update loop and keyboard handlers are not loaded.
+========================================================= */
+
+(function connectEditorGraphics() {
+
+    if (
+        typeof SPRITES === "undefined" ||
+        typeof BLOCK_SPRITES === "undefined" ||
+        typeof OBJECT_DEFS === "undefined" ||
+        typeof drawRotatedSprite !== "function"
+    ) {
+        document.getElementById("status").textContent =
+            "Graphics files did not load. Check the console.";
+        return;
+    }
+
+    const sourceCanvas = document.getElementById("game");
+    const sourceContext = sourceCanvas.getContext("2d");
+
+    const editorCanvas = document.getElementById("canvas");
+    const editorContext = editorCanvas.getContext("2d");
+
+    const spriteSize = DISPLAY_BLOCK_PIXELS;
+    const cellSize = editorCanvas.width / 9;
+
+    editorContext.imageSmoothingEnabled = false;
+
+    /* -----------------------------------------------------
+       SPRITE NAME LOOKUP
+    ----------------------------------------------------- */
+
+    const spriteNames = new Map(
+        Object.entries(SPRITE).map(
+            ([name, id]) => [id, name]
+        )
+    );
+
+    const objectNames = new Map(
+        Object.entries(OBJECT).map(
+            ([name, id]) => [id, name]
+        )
+    );
+
+    /* -----------------------------------------------------
+       DRAW USING EXISTING GAME RENDERER
+
+       Rotation is already handled by drawRotatedSprite().
+    ----------------------------------------------------- */
+
+    function copySprite(
+        destination,
+        spriteID,
+        x,
+        y,
+        size,
+        rotation = 0
+    ) {
+        if (!SPRITES[spriteID])
+            return;
+
+        sourceContext.clearRect(
+            0,
+            0,
+            spriteSize,
+            spriteSize
+        );
+
+        drawRotatedSprite(
+            spriteID,
+            0,
+            0,
+            rotation
+        );
+
+        destination.imageSmoothingEnabled = false;
+
+        destination.drawImage(
+            sourceCanvas,
+            0,
+            0,
+            spriteSize,
+            spriteSize,
+            x,
+            y,
+            size,
+            size
+        );
+    }
+
+    function makeThumbnail(spriteID, rotation = 0) {
+        const thumbnail = document.createElement("canvas");
+
+        thumbnail.width = 40;
+        thumbnail.height = 40;
+
+        thumbnail.style.width = "40px";
+        thumbnail.style.height = "40px";
+        thumbnail.style.margin = "0 auto";
+        thumbnail.style.imageRendering = "pixelated";
+
+        copySprite(
+            thumbnail.getContext("2d"),
+            spriteID,
+            0,
+            0,
+            40,
+            rotation
+        );
+
+        return thumbnail;
+    }
+
+    /* -----------------------------------------------------
+       GRAPHICAL TERRAIN PALETTE
+
+       Tile values remain BLOCK IDs.
+       BLOCK_SPRITES maps those IDs to actual sprite IDs.
+    ----------------------------------------------------- */
+
+    const palette = document.getElementById("palette");
+    palette.replaceChildren();
+
+    BLOCK_SPRITES.forEach((spriteID, blockID) => {
+
+        if (!SPRITES[spriteID])
+            return;
+
+        const name =
+            spriteNames.get(spriteID) ||
+            "BLOCK_" + blockID;
+
+        const button = document.createElement("button");
+
+        button.type = "button";
+        button.title = blockID + ": " + name;
+
+        button.setAttribute(
+            "aria-label",
+            "Paint " + name + ", block " + blockID
+        );
+
+        const label = document.createElement("div");
+        label.textContent = blockID;
+        label.style.fontSize = "11px";
+
+        button.append(
+            makeThumbnail(spriteID),
+            label
+        );
+
+        button.onclick = () => {
+            document.getElementById("tileID").value =
+                blockID;
+
+            document.getElementById("tool").value =
+                "tiles";
+
+            document.getElementById("status").textContent =
+                "Selected block " + blockID + ": " + name;
+        };
+
+        palette.append(button);
+    });
+
+    document.getElementById("tileID").max =
+        Math.min(63, BLOCK_SPRITES.length - 1);
+
+    /* -----------------------------------------------------
+       GRAPHICAL OBJECT PALETTE
+
+       Select an object entry first, then click its artwork.
+       Values remain game OBJECT IDs, not sprite IDs.
+    ----------------------------------------------------- */
+
+    const objectPanel = document.createElement("details");
+
+    const objectSummary = document.createElement("summary");
+    objectSummary.textContent = "Object palette";
+
+    const objectHelp = document.createElement("p");
+    objectHelp.className = "small";
+
+    objectHelp.textContent =
+        "Add or select an object in the Objects tab, " +
+        "then click its artwork below.";
+
+    const objectPalette = document.createElement("div");
+    objectPalette.className = "palette";
+
+    OBJECT_DEFS.forEach((definition, objectID) => {
+
+        if (!definition || !SPRITES[definition[0]])
+            return;
+
+        const name =
+            objectNames.get(objectID) ||
+            "OBJECT_" + objectID;
+
+        const button = document.createElement("button");
+
+        button.type = "button";
+        button.title = objectID + ": " + name;
+
+        button.setAttribute(
+            "aria-label",
+            "Use " + name + ", object " + objectID
+        );
+
+        const label = document.createElement("div");
+        label.textContent = objectID;
+        label.style.fontSize = "11px";
+
+        button.append(
+            makeThumbnail(definition[0]),
+            label
+        );
+
+        button.onclick = () => {
+            const entry =
+                model.extensions.objects?.[active];
+
+            if (tab !== "objects" || !entry) {
+                document.getElementById("status").textContent =
+                    "Add or select an object in the Objects tab first.";
+                return;
+            }
+
+            changeEntry(entry, "value", objectID);
+        };
+
+        objectPalette.append(button);
+    });
+
+    objectPanel.append(
+        objectSummary,
+        objectHelp,
+        objectPalette
+    );
+
+    palette.parentElement.append(objectPanel);
+
+    /* -----------------------------------------------------
+       REPLACE SCHEMATIC ROOM DRAWING
+
+       Retains the existing editor controls and counter display.
+       Repaints the canvas with actual terrain and object art.
+    ----------------------------------------------------- */
+
+    const originalDraw = draw;
+
+    draw = function drawEditorWithGameSprites() {
+
+        originalDraw();
+
+        if (!preview)
+            return;
+
+        const rotation = Number(
+            document.getElementById("previewRotation").value
+        );
+
+        editorContext.clearRect(
+            0,
+            0,
+            editorCanvas.width,
+            editorCanvas.height
+        );
+
+        editorContext.fillStyle = "#101619";
+
+        editorContext.fillRect(
+            0,
+            0,
+            editorCanvas.width,
+            editorCanvas.height
+        );
+
+        // Terrain
+        for (let y = 0; y < 9; y++) {
+            for (let x = 0; x < 9; x++) {
+
+                const position = rotate(x, y, rotation);
+                const value = preview.tiles[y * 9 + x];
+
+                const blockID = value & 63;
+                const blockRotation =
+                    ((value >> 6) + rotation) & 3;
+
+                const spriteID = BLOCK_SPRITES[blockID];
+
+                const px = position.x * cellSize;
+                const py = position.y * cellSize;
+
+                if (SPRITES[spriteID]) {
+                    copySprite(
+                        editorContext,
+                        spriteID,
+                        px,
+                        py,
+                        cellSize,
+                        blockRotation
+                    );
+                } else {
+                    editorContext.fillStyle = "#7d2841";
+                    editorContext.fillRect(
+                        px,
+                        py,
+                        cellSize,
+                        cellSize
+                    );
+
+                    editorContext.fillStyle = "#ffffff";
+                    editorContext.font = "12px monospace";
+                    editorContext.fillText(
+                        "ID " + blockID,
+                        px + 5,
+                        py + 18
+                    );
+                }
+            }
+        }
+
+        // Objects
+        for (const object of preview.objects) {
+
+            const definition = OBJECT_DEFS[object.value];
+
+            if (!definition)
+                continue;
+
+            const position = rotate(
+                object.x,
+                object.y,
+                rotation
+            );
+
+            /*
+               Rotate position with the room.
+
+               Artwork remains upright to match the current
+               game object renderer. Object-facing support
+               remains a separate runtime/editor improvement.
+            */
+
+            copySprite(
+                editorContext,
+                definition[0],
+                position.x * cellSize,
+                position.y * cellSize,
+                cellSize,
+                0
+            );
+        }
+
+        // Grid
+        editorContext.strokeStyle = "#10161966";
+        editorContext.lineWidth = 1;
+
+        for (let n = 0; n <= 9; n++) {
+            editorContext.beginPath();
+
+            editorContext.moveTo(n * cellSize, 0);
+            editorContext.lineTo(
+                n * cellSize,
+                editorCanvas.height
+            );
+
+            editorContext.moveTo(0, n * cellSize);
+            editorContext.lineTo(
+                editorCanvas.width,
+                n * cellSize
+            );
+
+            editorContext.stroke();
+        }
+
+        // Extension markers
+        for (const [key, letter, color] of [
+            ["animatedCells", "A", "#ffe09b"],
+            ["triggers", "T", "#85dfff"]
+        ]) {
+            for (const entry of model.extensions[key] || []) {
+
+                const position = rotate(
+                    entry.x,
+                    entry.y,
+                    rotation
+                );
+
+                const px = position.x * cellSize;
+                const py = position.y * cellSize;
+
+                const offsetY =
+                    key === "animatedCells" ? 3 : 23;
+
+                editorContext.fillStyle = "#101619dd";
+
+                editorContext.fillRect(
+                    px + 3,
+                    py + offsetY,
+                    18,
+                    18
+                );
+
+                editorContext.fillStyle = color;
+                editorContext.font = "bold 13px monospace";
+
+                editorContext.fillText(
+                    letter,
+                    px + 7,
+                    py + offsetY + 14
+                );
+            }
+        }
+
+        // Selected square
+        const selection = rotate(
+            selected.x,
+            selected.y,
+            rotation
+        );
+
+        editorContext.strokeStyle = "#fff1ae";
+        editorContext.lineWidth = 3;
+
+        editorContext.strokeRect(
+            selection.x * cellSize + 2,
+            selection.y * cellSize + 2,
+            cellSize - 4,
+            cellSize - 4
+        );
+
+        editorContext.lineWidth = 1;
+    };
+
+    // This listener originally retained the old draw function.
+    document.getElementById("previewRotation").onchange =
+        () => draw();
+
+    draw();
+
+    document.getElementById("status").textContent =
+        "Game graphics connected. Tile and object palettes are ready.";
+
+})();
+</script>
+<script>
+"use strict";
+
+(function addRoomTemplatePicker() {
+
+    if (
+        typeof ROOMS === "undefined" ||
+        typeof BLOCK_SPRITES === "undefined" ||
+        typeof drawRotatedSprite !== "function"
+    ) {
+        status("Room picker needs the game definitions and renderer.");
+        return;
+    }
+
+    const sourceCanvas = document.getElementById("game");
+    const sourceContext = sourceCanvas.getContext("2d");
+
+    const panel = document.createElement("details");
+    panel.open = true;
+
+    const heading = document.createElement("summary");
+    heading.textContent = "Existing room definitions";
+
+    const help = document.createElement("p");
+    help.className = "small";
+    help.textContent =
+        "Choose a room to edit a copy. Thumbnails follow " +
+        "the preview rotation. Loading replaces the current design.";
+
+    const picker = document.createElement("div");
+
+    picker.style.display = "grid";
+    picker.style.gridTemplateColumns = "repeat(2, minmax(0, 1fr))";
+    picker.style.gap = "8px";
+    picker.style.maxHeight = "420px";
+    picker.style.overflowY = "auto";
+
+    panel.append(heading, help, picker);
+
+    const sidebar = document.getElementById("palette").parentElement;
+    sidebar.prepend(panel);
+
+    const thumbnails = [];
+
+    /* -----------------------------------------------------
+       DRAW ONE ROOM THUMBNAIL
+    ----------------------------------------------------- */
+
+    function drawThumbnail(target, tiles, rotation) {
+
+        const targetContext = target.getContext("2d");
+        const tileSize = target.width / 9;
+
+        targetContext.imageSmoothingEnabled = false;
+        targetContext.fillStyle = "#101619";
+        targetContext.fillRect(0, 0, target.width, target.height);
+
+        for (let y = 0; y < 9; y++) {
+            for (let x = 0; x < 9; x++) {
+
+                const value = tiles[y * 9 + x];
+
+                const blockID = value & 63;
+
+                const blockRotation =
+                    ((value >> 6) + rotation) & 3;
+
+                const spriteID = BLOCK_SPRITES[blockID];
+
+                if (!SPRITES[spriteID])
+                    continue;
+
+                const position = rotate(x, y, rotation);
+
+                sourceContext.clearRect(
+                    0,
+                    0,
+                    DISPLAY_BLOCK_PIXELS,
+                    DISPLAY_BLOCK_PIXELS
+                );
+
+                drawRotatedSprite(
+                    spriteID,
+                    0,
+                    0,
+                    blockRotation
+                );
+
+                targetContext.drawImage(
+                    sourceCanvas,
+                    0,
+                    0,
+                    DISPLAY_BLOCK_PIXELS,
+                    DISPLAY_BLOCK_PIXELS,
+                    position.x * tileSize,
+                    position.y * tileSize,
+                    tileSize,
+                    tileSize
+                );
+            }
+        }
+    }
+
+    /* -----------------------------------------------------
+       BUILD PICKER FROM EXISTING ROOMS
+    ----------------------------------------------------- */
+
+    ROOMS.forEach((tiles, roomID) => {
+
+        if (!Array.isArray(tiles) || tiles.length !== 81)
+            return;
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.title = "Load a copy of room " + roomID;
+
+        const thumbnail = document.createElement("canvas");
+
+        thumbnail.width = 108;
+        thumbnail.height = 108;
+
+        thumbnail.style.display = "block";
+        thumbnail.style.width = "100%";
+        thumbnail.style.maxWidth = "108px";
+        thumbnail.style.height = "auto";
+        thumbnail.style.margin = "0 auto";
+        thumbnail.style.imageRendering = "pixelated";
+
+        const label = document.createElement("div");
+        label.textContent = "Room " + roomID;
+
+        button.append(thumbnail, label);
+
+        button.onclick = () => {
+
+            if (!confirm(
+                "Load room " + roomID +
+                "? This replaces the current editor design."
+            )) {
+                return;
+            }
+
+            // Copy original local tiles.
+            // Preview rotation does not alter the saved definition.
+            loadRoom({
+                name: "Room " + roomID,
+                tiles: [...tiles],
+                extensions: {}
+            });
+
+            status(
+                "Loaded a copy of room " + roomID +
+                ". Add triggers, objects, and animated tiles as needed."
+            );
+        };
+
+        thumbnails.push({
+            canvas: thumbnail,
+            tiles
+        });
+
+        picker.append(button);
+    });
+
+    /* -----------------------------------------------------
+       ROTATE THUMBNAILS WITH ROOM PREVIEW
+    ----------------------------------------------------- */
+
+    function refreshThumbnails() {
+
+        const rotation = Number(
+            document.getElementById("previewRotation").value
+        );
+
+        for (const thumbnail of thumbnails) {
+            drawThumbnail(
+                thumbnail.canvas,
+                thumbnail.tiles,
+                rotation
+            );
+        }
+    }
+
+    document.getElementById("previewRotation")
+        .addEventListener("change", refreshThumbnails);
+
+    refreshThumbnails();
+
+})();
+</script>
+
+<script>
+"use strict";
+
+(function addAnimationFrameEditor() {
+
+    const originalEntryForm = entryForm;
+    const originalDraw = draw;
+
+    const selections = new WeakMap();
+
+    let chosenBlockID = 1;
+    let currentStrip = null;
+
+    const style = document.createElement("style");
+
+    style.textContent = `
+        .animation-frame-strip {
+            display: flex;
+            gap: 7px;
+            overflow-x: auto;
+            padding: 7px 4px;
+            margin-bottom: 10px;
+        }
+
+        .animation-frame {
+            flex: 0 0 64px;
+            position: relative;
+            border: 2px solid #506168;
+        }
+
+        .animation-frame.frame-selected {
+            background: #23445b;
+            border-color: #85dfff;
+        }
+
+        .animation-frame.frame-playing {
+            outline: 3px solid #e1bc71;
+            outline-offset: 1px;
+        }
+
+        .animation-frame-palette {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 6px;
+            max-height: 260px;
+            overflow-y: auto;
+            padding: 5px;
+        }
+
+        .animation-frame-palette button {
+            padding: 4px;
+            font-size: 11px;
+        }
+
+        .animation-frame-palette button.chosen-block {
+            border-color: #85dfff;
+            background: #23445b;
+        }
+
+        .animation-frame-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 8px 0;
+        }
+
+        .animation-frame-controls button {
+            flex: 1 1 auto;
+        }
+    `;
+
+    document.head.append(style);
+
+    /* -----------------------------------------------------
+       SPRITE THUMBNAIL
+    ----------------------------------------------------- */
+
+    function thumbnail(blockID, rotation = 0) {
+
+        const canvas = document.createElement("canvas");
+
+        canvas.width = 40;
+        canvas.height = 40;
+
+        canvas.style.width = "40px";
+        canvas.style.height = "40px";
+        canvas.style.maxWidth = "100%";
+        canvas.style.margin = "0 auto";
+        canvas.style.imageRendering = "pixelated";
+
+        const destination = canvas.getContext("2d");
+        destination.imageSmoothingEnabled = false;
+
+        const source = document.getElementById("game");
+        const sourceContext = source.getContext("2d");
+
+        const spriteID = BLOCK_SPRITES[blockID];
+
+        if (SPRITES[spriteID]) {
+
+            sourceContext.clearRect(
+                0,
+                0,
+                DISPLAY_BLOCK_PIXELS,
+                DISPLAY_BLOCK_PIXELS
+            );
+
+            drawRotatedSprite(
+                spriteID,
+                0,
+                0,
+                rotation
+            );
+
+            destination.drawImage(
+                source,
+                0,
+                0,
+                DISPLAY_BLOCK_PIXELS,
+                DISPLAY_BLOCK_PIXELS,
+                0,
+                0,
+                40,
+                40
+            );
+        }
+
+        return canvas;
+    }
+
+    function makeButton(text, handler) {
+        const button = document.createElement("button");
+
+        button.type = "button";
+        button.textContent = text;
+        button.onclick = handler;
+
+        return button;
+    }
+
+    /* -----------------------------------------------------
+       FIND PLAYING FRAME
+
+       Uses exactly the same offset calculation as the
+       animation system. Editing selection is independent.
+    ----------------------------------------------------- */
+
+    function playingFrame(entry) {
+
+        const animation = preview?.animation;
+
+        if (!animation)
+            return -1;
+
+        let index =
+            animation.counter -
+            animation.min +
+            (entry.offset ?? 0);
+
+        if (entry.sampling === "wrap") {
+            index =
+                (
+                    (index % entry.pattern.length) +
+                    entry.pattern.length
+                ) % entry.pattern.length;
+        } else {
+            index = Math.max(
+                0,
+                Math.min(
+                    entry.pattern.length - 1,
+                    index
+                )
+            );
+        }
+
+        return index;
+    }
+
+    function updateFrameHighlight() {
+
+        if (!currentStrip || tab !== "animatedCells")
+            return;
+
+        const entry =
+            model.extensions.animatedCells?.[active];
+
+        if (!entry || currentStrip.entry !== entry)
+            return;
+
+        const playing = playingFrame(entry);
+
+        currentStrip.buttons.forEach((button, index) => {
+            button.classList.toggle(
+                "frame-playing",
+                index === playing
+            );
+        });
+
+        currentStrip.description.textContent =
+            "Counter: " + (preview.animation?.counter ?? 0) +
+            " · Offset: " + entry.offset +
+            " · Playing frame: " + playing +
+            " · Block: " + entry.pattern[playing];
+    }
+
+    /* -----------------------------------------------------
+       EXTEND EXISTING ANIMATION FORM
+    ----------------------------------------------------- */
+
+    entryForm = function entryFormWithFrameStrip() {
+
+        originalEntryForm();
+
+        currentStrip = null;
+
+        if (tab !== "animatedCells")
+            return;
+
+        const entry =
+            model.extensions.animatedCells?.[active];
+
+        if (!entry)
+            return;
+
+        let selectedFrame = selections.get(entry) ?? 0;
+
+        selectedFrame = Math.max(
+            0,
+            Math.min(entry.pattern.length - 1, selectedFrame)
+        );
+
+        selections.set(entry, selectedFrame);
+
+        const panel = document.createElement("div");
+
+        const heading = document.createElement("h2");
+        heading.textContent = "Animation frames";
+
+        const help = document.createElement("p");
+        help.className = "small";
+        help.textContent =
+            "Click a frame to edit it. Choose a tile below, " +
+            "then append it or replace the selected frame. " +
+            "Duplicate frames to create holds.";
+
+        const strip = document.createElement("div");
+        strip.className = "animation-frame-strip";
+
+        const buttons = [];
+
+        entry.pattern.forEach((blockID, index) => {
+
+            const button = document.createElement("button");
+
+            button.type = "button";
+            button.className = "animation-frame";
+
+            button.classList.toggle(
+                "frame-selected",
+                index === selectedFrame
+            );
+
+            button.title =
+                "Frame " + index + ", block " + blockID;
+
+            const label = document.createElement("div");
+            label.textContent = index + ": " + blockID;
+            label.style.fontSize = "11px";
+
+            button.append(
+                thumbnail(blockID, entry.rotation),
+                label
+            );
+
+            button.onclick = () => {
+                selections.set(entry, index);
+                entryForm();
+            };
+
+            strip.append(button);
+            buttons.push(button);
+        });
+
+        const description = document.createElement("p");
+        description.className = "small";
+
+        /* -------------------------------------------------
+           PATTERN CHANGES
+
+           Only the pattern changes. Offset, rotation,
+           sampling, and controller settings are preserved.
+        ------------------------------------------------- */
+
+        function commit(pattern, selection) {
+            selections.set(entry, selection);
+
+            changeEntry(
+                entry,
+                "pattern",
+                pattern
+            );
+        }
+
+        const controls = document.createElement("div");
+        controls.className = "animation-frame-controls";
+
+        controls.append(
+
+            makeButton("← Move", () => {
+
+                if (selectedFrame === 0)
+                    return;
+
+                const pattern = [...entry.pattern];
+
+                [
+                    pattern[selectedFrame - 1],
+                    pattern[selectedFrame]
+                ] = [
+                    pattern[selectedFrame],
+                    pattern[selectedFrame - 1]
+                ];
+
+                commit(pattern, selectedFrame - 1);
+            }),
+
+            makeButton("Move →", () => {
+
+                if (selectedFrame >= entry.pattern.length - 1)
+                    return;
+
+                const pattern = [...entry.pattern];
+
+                [
+                    pattern[selectedFrame],
+                    pattern[selectedFrame + 1]
+                ] = [
+                    pattern[selectedFrame + 1],
+                    pattern[selectedFrame]
+                ];
+
+                commit(pattern, selectedFrame + 1);
+            }),
+
+            makeButton("Duplicate", () => {
+
+                const pattern = [...entry.pattern];
+
+                pattern.splice(
+                    selectedFrame + 1,
+                    0,
+                    pattern[selectedFrame]
+                );
+
+                commit(pattern, selectedFrame + 1);
+            }),
+
+            makeButton("Delete", () => {
+
+                if (entry.pattern.length === 1) {
+                    status("Keep at least one animation frame.");
+                    return;
+                }
+
+                const pattern = [...entry.pattern];
+                pattern.splice(selectedFrame, 1);
+
+                commit(
+                    pattern,
+                    Math.min(selectedFrame, pattern.length - 1)
+                );
+            })
+        );
+
+        const chosenLabel = document.createElement("p");
+        chosenLabel.className = "small";
+        chosenLabel.textContent =
+            "Chosen terrain block: " + chosenBlockID;
+
+        const palette = document.createElement("div");
+        palette.className = "animation-frame-palette";
+
+        const paletteButtons = [];
+
+        BLOCK_SPRITES.forEach((spriteID, blockID) => {
+
+            if (!SPRITES[spriteID])
+                return;
+
+            const button = document.createElement("button");
+
+            button.type = "button";
+            button.dataset.blockId = blockID;
+            button.title = "Choose block " + blockID;
+
+            button.classList.toggle(
+                "chosen-block",
+                blockID === chosenBlockID
+            );
+
+            const label = document.createElement("div");
+            label.textContent = blockID;
+
+            button.append(
+                thumbnail(blockID, entry.rotation),
+                label
+            );
+
+            button.onclick = () => {
+
+                chosenBlockID = blockID;
+
+                chosenLabel.textContent =
+                    "Chosen terrain block: " + blockID;
+
+                for (const candidate of paletteButtons) {
+                    candidate.classList.toggle(
+                        "chosen-block",
+                        Number(candidate.dataset.blockId) === blockID
+                    );
+                }
+            };
+
+            paletteButtons.push(button);
+            palette.append(button);
+        });
+
+        const insertControls = document.createElement("div");
+        insertControls.className = "animation-frame-controls";
+
+        insertControls.append(
+
+            makeButton("Append chosen tile", () => {
+                commit(
+                    [...entry.pattern, chosenBlockID],
+                    entry.pattern.length
+                );
+            }),
+
+            makeButton("Replace selected frame", () => {
+
+                const pattern = [...entry.pattern];
+                pattern[selectedFrame] = chosenBlockID;
+
+                commit(pattern, selectedFrame);
+            })
+        );
+
+        const note = document.createElement("p");
+        note.className = "small";
+        note.textContent =
+            "The room counter limits do not change automatically. " +
+            "For one complete pass with offset 0, set maximum to " +
+            "minimum + pattern length − 1. Other offsets can " +
+            "intentionally start partway through the pattern.";
+
+        panel.append(
+            heading,
+            help,
+            strip,
+            description,
+            controls,
+            chosenLabel,
+            palette,
+            insertControls,
+            note
+        );
+
+        // Keep the existing coordinate, rotation, offset,
+        // sampling, and numeric pattern fields underneath.
+        document.getElementById("form").prepend(panel);
+
+        currentStrip = {
+            entry,
+            buttons,
+            description
+        };
+
+        updateFrameHighlight();
+    };
+
+    /* -----------------------------------------------------
+       FOLLOW THE PREVIEW COUNTER
+    ----------------------------------------------------- */
+
+    draw = function drawWithFrameHighlight() {
+        originalDraw();
+        updateFrameHighlight();
+    };
+
+    document.getElementById("previewRotation").onchange =
+        () => draw();
+
+    entryForm();
+    draw();
+
+    status("Graphical animation frames are ready.");
+
+})();
+</script>
+<script>
+"use strict";
+
+(function addTriggerActionForms() {
+
+    const previousEntryForm = entryForm;
+
+    const actionLabels = {
+        startAnimation: "Start room animation",
+        stopAnimation: "Stop room animation",
+        changeTile: "Change tile",
+        changeObject: "Change existing object",
+        depositObject: "Deposit object",
+        depositMonster: "Deposit monster",
+        addKnowledge: "Add knowledge"
+    };
+
+    const objectChoices = Object.entries(OBJECT)
+        .map(([name, value]) => [
+            String(value),
+            value + ": " + name
+        ]);
+
+    const spriteNames = new Map(
+        Object.entries(SPRITE).map(
+            ([name, value]) => [value, name]
+        )
+    );
+
+    const blockChoices = BLOCK_SPRITES.map(
+        (spriteID, blockID) => [
+            String(blockID),
+            blockID + ": " +
+            (spriteNames.get(spriteID) || "Terrain")
+        ]
+    );
+
+    const rotations = [
+        ["0", "North"],
+        ["1", "East"],
+        ["2", "South"],
+        ["3", "West"]
+    ];
+
+    const style = document.createElement("style");
+
+    style.textContent = `
+        .trigger-action-card {
+            border: 1px solid #506168;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 10px 0;
+            background: #142026;
+        }
+
+        .trigger-action-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }
+
+        .trigger-action-heading strong {
+            color: #e1bc71;
+        }
+
+        .trigger-action-buttons {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .trigger-action-buttons button {
+            flex: 1;
+        }
+    `;
+
+    document.head.append(style);
+
+    function button(text, handler) {
+        const element = document.createElement("button");
+
+        element.type = "button";
+        element.textContent = text;
+        element.onclick = handler;
+
+        return element;
+    }
+
+    function listText(value) {
+        if (value == null)
+            return "";
+
+        return Array.isArray(value)
+            ? value.join(", ")
+            : String(value);
+    }
+
+    function parseList(text) {
+        return text
+            .split(",")
+            .map(value => value.trim())
+            .filter(Boolean);
+    }
+
+    function newAction(type) {
+        const action = { type };
+
+        if (type === "startAnimation")
+            action.direction = 1;
+
+        if ([
+            "changeTile",
+            "changeObject",
+            "depositObject",
+            "depositMonster"
+        ].includes(type)) {
+            action.x = selected.x;
+            action.y = selected.y;
+            action.rotation = 0;
+
+            if (type === "changeTile")
+                action.blockID = 1;
+            else
+                action.value = OBJECT.QUIVER;
+        }
+
+        if (type === "changeObject")
+            action.fromValue = OBJECT.QUIVER;
+
+        if (type === "depositMonster")
+            action.value = OBJECT.SNAKE;
+
+        if (type === "addKnowledge") {
+            action.scope = "global";
+            action.mnemonics = ["switch_activated"];
+        }
+
+        return action;
+    }
+
+    /* -----------------------------------------------------
+       REPLACE TRIGGER FORM ONLY
+
+       The previous wrapper continues handling animated tiles.
+    ----------------------------------------------------- */
+
+    entryForm = function entryFormWithTriggerActions() {
+
+        if (tab !== "triggers") {
+            previousEntryForm();
+            return;
+        }
+
+        const root = document.getElementById("form");
+        root.replaceChildren();
+
+        const trigger =
+            model.extensions.triggers?.[active];
+
+        if (!trigger)
+            return;
+
+        field(
+            root,
+            "Trigger local X",
+            "number",
+            trigger.x,
+            value => changeEntry(trigger, "x", value)
+        );
+
+        field(
+            root,
+            "Trigger local Y",
+            "number",
+            trigger.y,
+            value => changeEntry(trigger, "y", value)
+        );
+
+        for (const activation of ["step", "arrow"]) {
+            field(
+                root,
+                activation === "step"
+                    ? "Player steps on square"
+                    : "Arrow hits square",
+                "checkbox",
+                trigger.activation.includes(activation),
+
+                checked => {
+                    const values = checked
+                        ? [...new Set([
+                            ...trigger.activation,
+                            activation
+                        ])]
+                        : trigger.activation.filter(
+                            value => value !== activation
+                        );
+
+                    changeEntry(
+                        trigger,
+                        "activation",
+                        values
+                    );
+                }
+            );
+        }
+
+        field(
+            root,
+            "Activate once",
+            "checkbox",
+            trigger.once,
+            value => changeEntry(trigger, "once", value)
+        );
+
+        field(
+            root,
+            "Enabled",
+            "checkbox",
+            trigger.enabled !== false,
+            value => changeEntry(trigger, "enabled", value)
+        );
+
+        const heading = document.createElement("h2");
+        heading.textContent = "Actions";
+        heading.style.marginTop = "18px";
+
+        const help = document.createElement("p");
+        help.className = "small";
+        help.textContent =
+            "Actions run from top to bottom. Target squares " +
+            "use original room-local coordinates and rotate " +
+            "with the room.";
+
+        root.append(heading, help);
+
+        /* -------------------------------------------------
+           COMMIT A COMPLETE ACTION LIST
+        ------------------------------------------------- */
+
+        function commit(actions) {
+            changeEntry(trigger, "actions", actions);
+        }
+
+        function changeAction(index, key, value) {
+            const actions = structuredClone(trigger.actions);
+            actions[index][key] = value;
+            commit(actions);
+        }
+
+        function choiceField(
+            parent,
+            label,
+            value,
+            choices,
+            change
+        ) {
+            // Preserve imported values not present in the palette.
+            const options = [...choices];
+
+            if (!options.some(option =>
+                option[0] === String(value)
+            )) {
+                options.unshift([
+                    String(value),
+                    String(value) + ": Custom value"
+                ]);
+            }
+
+            field(
+                parent,
+                label,
+                "select",
+                value,
+                result => change(Number(result)),
+                options
+            );
+        }
+
+        /* -------------------------------------------------
+           ACTION CARDS
+        ------------------------------------------------- */
+
+        trigger.actions.forEach((action, index) => {
+
+            const card = document.createElement("div");
+            card.className = "trigger-action-card";
+
+            const title = document.createElement("strong");
+
+            title.textContent =
+                (index + 1) + ". " +
+                (actionLabels[action.type] || action.type);
+
+            card.append(title);
+
+            field(
+                card,
+                "Action",
+                "select",
+                action.type,
+
+                type => {
+                    const actions =
+                        structuredClone(trigger.actions);
+
+                    actions[index] = newAction(type);
+                    commit(actions);
+                },
+
+                Object.entries(actionLabels)
+            );
+
+            if (action.type === "startAnimation") {
+                field(
+                    card,
+                    "Count direction",
+                    "select",
+                    action.direction ?? 1,
+
+                    value => changeAction(
+                        index,
+                        "direction",
+                        Number(value)
+                    ),
+
+                    [
+                        ["1", "Up toward maximum"],
+                        ["-1", "Down toward minimum"]
+                    ]
+                );
+
+                if (!model.extensions.animation) {
+                    const warning = document.createElement("p");
+                    warning.className = "small";
+
+                    warning.textContent =
+                        "Enable the room animation controller " +
+                        "for this action to have an effect.";
+
+                    card.append(warning);
+                }
+            }
+
+            if ([
+                "changeTile",
+                "changeObject",
+                "depositObject",
+                "depositMonster"
+            ].includes(action.type)) {
+
+                field(
+                    card,
+                    "Target local X",
+                    "number",
+                    action.x,
+
+                    value => changeAction(
+                        index,
+                        "x",
+                        value
+                    )
+                );
+
+                field(
+                    card,
+                    "Target local Y",
+                    "number",
+                    action.y,
+
+                    value => changeAction(
+                        index,
+                        "y",
+                        value
+                    )
+                );
+            }
+
+            if (action.type === "changeTile") {
+
+                choiceField(
+                    card,
+                    "New terrain",
+                    action.blockID,
+                    blockChoices,
+
+                    value => changeAction(
+                        index,
+                        "blockID",
+                        value
+                    )
+                );
+
+                field(
+                    card,
+                    "Terrain orientation",
+                    "select",
+                    action.rotation ?? 0,
+
+                    value => changeAction(
+                        index,
+                        "rotation",
+                        Number(value)
+                    ),
+
+                    rotations
+                );
+            }
+
+            if (action.type === "changeObject") {
+                choiceField(
+                    card,
+                    "Find object with value",
+                    action.fromValue,
+                    objectChoices,
+
+                    value => changeAction(
+                        index,
+                        "fromValue",
+                        value
+                    )
+                );
+            }
+
+            if ([
+                "changeObject",
+                "depositObject",
+                "depositMonster"
+            ].includes(action.type)) {
+
+                choiceField(
+                    card,
+                    action.type === "depositMonster"
+                        ? "Monster object type"
+                        : "New object value",
+                    action.value,
+                    objectChoices,
+
+                    value => changeAction(
+                        index,
+                        "value",
+                        value
+                    )
+                );
+
+                const note = document.createElement("p");
+                note.className = "small";
+
+                note.textContent =
+                    action.type === "depositMonster"
+                        ? "Choose a monster type. The game adapter " +
+                          "initializes its behavior."
+                        : "The current game adapters use position " +
+                          "and object value. Artwork facing is " +
+                          "not changed here.";
+
+                card.append(note);
+            }
+
+            if (action.type === "addKnowledge") {
+
+                field(
+                    card,
+                    "Knowledge destination",
+                    "select",
+                    action.scope,
+
+                    scope => {
+                        const actions =
+                            structuredClone(trigger.actions);
+
+                        const updated = actions[index];
+                        updated.scope = scope;
+
+                        if (scope === "personal") {
+                            updated.ids ??= ["player"];
+                        }
+
+                        if (scope === "group") {
+                            updated.id ||= "shrine";
+                        }
+
+                        commit(actions);
+                    },
+
+                    [
+                        ["global", "Global knowledge"],
+                        ["group", "Group knowledge"],
+                        ["personal", "Personal knowledge"]
+                    ]
+                );
+
+                if (action.scope === "group") {
+                    field(
+                        card,
+                        "Group ID",
+                        "text",
+                        action.id,
+
+                        value => changeAction(
+                            index,
+                            "id",
+                            value.trim()
+                        )
+                    );
+                }
+
+                if (action.scope === "personal") {
+                    field(
+                        card,
+                        "Character IDs, separated by commas",
+                        "text",
+                        listText(action.ids),
+
+                        value => changeAction(
+                            index,
+                            "ids",
+                            parseList(value)
+                        )
+                    );
+
+                    const note = document.createElement("p");
+                    note.className = "small";
+
+                    note.textContent =
+                        "Use actual character knowledge IDs. " +
+                        "'player' is only an editable placeholder.";
+
+                    card.append(note);
+                }
+
+                field(
+                    card,
+                    "Add mnemonics, separated by commas",
+                    "text",
+                    listText(action.mnemonics),
+
+                    value => changeAction(
+                        index,
+                        "mnemonics",
+                        parseList(value)
+                    )
+                );
+
+                field(
+                    card,
+                    "Remove mnemonics, separated by commas",
+                    "text",
+                    listText(action.replace),
+
+                    value => changeAction(
+                        index,
+                        "replace",
+                        parseList(value)
+                    )
+                );
+            }
+
+            /* ---------------------------------------------
+               ORDER AND DELETE
+            --------------------------------------------- */
+
+            const controls = document.createElement("div");
+            controls.className = "trigger-action-buttons";
+
+            const up = button("↑", () => {
+
+                if (index === 0)
+                    return;
+
+                const actions =
+                    structuredClone(trigger.actions);
+
+                [
+                    actions[index - 1],
+                    actions[index]
+                ] = [
+                    actions[index],
+                    actions[index - 1]
+                ];
+
+                commit(actions);
+            });
+
+            up.disabled = index === 0;
+            up.setAttribute("aria-label", "Move action up");
+
+            const down = button("↓", () => {
+
+                if (index === trigger.actions.length - 1)
+                    return;
+
+                const actions =
+                    structuredClone(trigger.actions);
+
+                [
+                    actions[index],
+                    actions[index + 1]
+                ] = [
+                    actions[index + 1],
+                    actions[index]
+                ];
+
+                commit(actions);
+            });
+
+            down.disabled =
+                index === trigger.actions.length - 1;
+
+            down.setAttribute("aria-label", "Move action down");
+
+            const remove = button("Delete", () => {
+
+                const actions =
+                    structuredClone(trigger.actions);
+
+                actions.splice(index, 1);
+                commit(actions);
+            });
+
+            controls.append(up, down, remove);
+            card.append(controls);
+            root.append(card);
+        });
+
+        /* -------------------------------------------------
+           ADD ACTION
+        ------------------------------------------------- */
+
+        let selectedType = "startAnimation";
+
+        field(
+            root,
+            "New action type",
+            "select",
+            selectedType,
+            value => selectedType = value,
+            Object.entries(actionLabels)
+        );
+
+        root.append(
+            button("Add action", () => {
+                commit([
+                    ...trigger.actions,
+                    newAction(selectedType)
+                ]);
+            })
+        );
+    };
+
+    entryForm();
+
+    status("Trigger action fields are ready.");
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1750 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>16×16 Sprite Editor</title>
+
+<style>
+:root {
+    color-scheme: dark;
+    font: 14px Arial, sans-serif;
+    background: #151719;
+    color: #e4e4e4;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; padding: 18px; }
+
+h1 {
+    font-size: 24px;
+    margin: 0 0 8px;
+}
+
+h2 {
+    font-size: 16px;
+    margin: 0 0 10px;
+}
+
+.layout {
+    display: grid;
+    grid-template-columns:
+        260px
+        minmax(350px,520px)
+        minmax(300px,1fr);
+    gap: 16px;
+    max-width: 1650px;
+    margin: auto;
+}
+
+.panel {
+    background: #232629;
+    border: 1px solid #41464a;
+    border-radius: 8px;
+    padding: 14px;
+    min-width: 0;
+}
+
+label {
+    display: block;
+    margin: 10px 0 5px;
+}
+
+input, select, button, textarea {
+    font: inherit;
+    background: #111;
+    color: #eee;
+    border: 1px solid #5a6064;
+    border-radius: 4px;
+    padding: 7px;
+    max-width: 100%;
+}
+
+input:not([type=checkbox]),
+select,
+textarea {
+    width: 100%;
+}
+
+button { cursor: pointer; }
+button:hover { background: #343b40; }
+
+button:disabled {
+    opacity: .45;
+    cursor: default;
+}
+
+textarea {
+    font: 12px/1.5 monospace;
+    resize: vertical;
+}
+
+.row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 10px 0;
+}
+
+.row > * { flex: 1; }
+
+.hint {
+    font-size: 12px;
+    color: #aeb4b8;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.palette {
+    display: grid;
+    grid-template-columns: repeat(5,1fr);
+    gap: 6px;
+}
+
+.swatch {
+    height: 42px;
+    font-size: 12px;
+    text-shadow: 0 1px 3px black;
+}
+
+.swatch.selected {
+    outline: 3px solid #ffdd70;
+    outline-offset: 1px;
+}
+
+.checker {
+    background-color: #ddd;
+    background-image:
+        linear-gradient(45deg,#aaa 25%,transparent 25%),
+        linear-gradient(-45deg,#aaa 25%,transparent 25%),
+        linear-gradient(45deg,transparent 75%,#aaa 75%),
+        linear-gradient(-45deg,transparent 75%,#aaa 75%);
+    background-size: 12px 12px;
+    background-position: 0 0,0 6px,6px -6px,-6px 0;
+}
+
+canvas { image-rendering: pixelated; }
+
+#draw {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1;
+    border: 2px solid #777;
+    touch-action: none;
+    cursor: crosshair;
+}
+
+.preview {
+    width: 96px;
+    height: 96px;
+    border: 1px solid #777;
+}
+
+.previews {
+    display: flex;
+    justify-content: space-around;
+    gap: 12px;
+    margin: 12px 0;
+}
+
+.previewLabel {
+    text-align: center;
+    font-size: 12px;
+}
+
+.sheet {
+    display: grid;
+    grid-template-columns: repeat(4,1fr);
+    gap: 5px;
+    max-height: 430px;
+    overflow: auto;
+    margin-top: 10px;
+}
+
+.sheet button {
+    padding: 3px;
+    font-size: 11px;
+}
+
+.sheet canvas {
+    width: 40px;
+    height: 40px;
+    display: block;
+    margin: auto;
+}
+
+.sheet .active {
+    outline: 2px solid #ffdd70;
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid #41464a;
+    margin: 16px 0;
+}
+
+summary {
+    cursor: pointer;
+    margin: 8px 0;
+    color: #e4c67a;
+}
+
+#status {
+    min-height: 36px;
+    padding: 12px 0;
+    color: #e4c67a;
+    white-space: pre-wrap;
+    max-width: 1650px;
+    margin: auto;
+}
+
+@media(max-width:1150px) {
+    .layout { grid-template-columns: 240px 1fr; }
+    .data { grid-column: 1/-1; }
+}
+
+@media(max-width:700px) {
+    .layout { display: block; }
+    .panel { margin-bottom: 12px; }
+    body { padding: 10px; }
+}
+</style>
+</head>
+
+<body>
+
+<h1>16×16 Sprite Editor</h1>
+
+<p class="hint">
+    Uses sprite_definitions.js.
+    Sprite IDs, aliases, terrain block mappings,
+    and animation groups are preserved.
+</p>
+
+<main class="layout">
+
+    <aside class="panel">
+        <h2>Sprites</h2>
+
+        <label for="filter">Filter by name or ID</label>
+        <input id="filter" placeholder="snake, pit, 125…">
+
+        <label for="spriteSelect">Selected sprite</label>
+        <select id="spriteSelect"></select>
+
+        <div id="uses" class="hint"></div>
+        <div id="sheet" class="sheet"></div>
+
+        <hr>
+
+        <label for="newName">New sprite name</label>
+        <input id="newName" placeholder="NEW_SPRITE_1">
+
+        <div class="row">
+            <button id="newSprite">Append blank</button>
+            <button id="duplicate">Append copy</button>
+        </div>
+
+        <p class="hint">
+            New sprites are appended.
+            Existing sprite IDs never move.
+        </p>
+
+        <label for="alias">
+            Additional name for selected sprite
+        </label>
+        <input id="alias" placeholder="COMPATIBILITY_NAME">
+
+        <button id="addAlias">Add alias</button>
+
+        <hr>
+
+        <h2>Shared palette</h2>
+
+        <div id="palette" class="palette"></div>
+        <p id="colorLabel" class="hint"></p>
+
+        <label for="color">Selected color</label>
+        <input id="color" type="color">
+
+        <button id="setColor">Apply color</button>
+
+        <p class="hint">
+            Palette changes affect every sprite.
+            Index 0 remains transparent.
+            Labels use base 36:
+            a–i are indices 10–18.
+        </p>
+    </aside>
+
+    <section class="panel">
+        <h2 id="spriteHeading">Sprite</h2>
+
+        <label for="tool">Drawing tool</label>
+        <select id="tool">
+            <option value="paint">Paint</option>
+            <option value="fill">Flood fill</option>
+            <option value="pick">Pick color</option>
+        </select>
+
+        <canvas
+            id="draw"
+            width="512"
+            height="512"
+            class="checker"
+            aria-label="16 by 16 sprite canvas">
+        </canvas>
+
+        <p class="hint">
+            Drag to draw.
+            Right button erases.
+            Shift-click picks a color.
+        </p>
+
+        <div class="row">
+            <button id="undo">Undo</button>
+            <button id="redo">Redo</button>
+            <button id="clear">Clear</button>
+            <button id="fill">Fill selected</button>
+        </div>
+
+        <div class="row">
+            <button id="flipH">Flip ↔</button>
+            <button id="flipV">Flip ↕</button>
+            <button id="rotate">Rotate clockwise</button>
+        </div>
+
+        <label>
+            <input id="grid" type="checkbox" checked>
+            Show grid
+        </label>
+
+        <div class="previews">
+            <div class="previewLabel">
+                <canvas
+                    id="preview"
+                    width="16"
+                    height="16"
+                    class="preview checker">
+                </canvas>
+                <div>Selected sprite</div>
+            </div>
+
+            <div class="previewLabel">
+                <canvas
+                    id="animationPreview"
+                    width="16"
+                    height="16"
+                    class="preview checker">
+                </canvas>
+                <div id="frameLabel">Animation</div>
+            </div>
+        </div>
+
+        <hr>
+
+        <h2>Animation groups</h2>
+
+        <label for="group">Existing group</label>
+        <select id="group"></select>
+
+        <label for="groupName">Group name</label>
+        <input id="groupName">
+
+        <label for="frames">Sprite IDs in playback order</label>
+        <input id="frames" placeholder="125,126">
+
+        <div class="row">
+            <button id="saveGroup">Save group</button>
+            <button id="appendFrame">Append selected sprite</button>
+        </div>
+
+        <div class="row">
+            <button id="newGroup">New group</button>
+            <button id="deleteGroup">Delete group</button>
+        </div>
+
+        <label for="fps">Preview frames per second</label>
+        <input
+            id="fps"
+            type="number"
+            min="1"
+            max="30"
+            value="4">
+
+        <p class="hint">
+            These are sprite IDs.
+            Room animation patterns use block IDs;
+            the usage display shows their mapping.
+        </p>
+    </section>
+
+    <section class="panel data">
+        <h2>Sprite pixels</h2>
+
+        <label for="pixels">
+            256 base-36 pixels, 16 rows,
+            or a numeric JSON array
+        </label>
+
+        <textarea
+            id="pixels"
+            rows="18"
+            spellcheck="false">
+        </textarea>
+
+        <div class="row">
+            <button id="applyPixels">Apply pixels</button>
+            <button id="showSprite">Show sprite JS</button>
+        </div>
+
+        <details>
+            <summary>Shared palette JSON</summary>
+
+            <textarea
+                id="paletteJSON"
+                rows="10"
+                spellcheck="false">
+            </textarea>
+
+            <button id="applyPalette">Apply palette JSON</button>
+        </details>
+
+        <hr>
+
+        <h2>Copy / export</h2>
+
+        <div class="row">
+            <button id="showDefinitions">
+                Show sprite_definitions.js
+            </button>
+            <button id="downloadDefinitions">Download JS</button>
+        </div>
+
+        <div class="row">
+            <button id="showJSON">Show full JSON</button>
+            <button id="importJSON">Import full JSON</button>
+        </div>
+
+        <textarea
+            id="output"
+            rows="16"
+            spellcheck="false"
+            aria-label="Copyable output or full JSON import">
+        </textarea>
+
+        <div class="row">
+            <button id="copy">Copy output</button>
+            <button id="saveDraft">Save browser draft</button>
+            <button id="loadDraft">Load draft</button>
+        </div>
+
+        <p class="hint">
+            Show sprite_definitions.js produces the complete
+            replacement file. Copy it from the box if downloads
+            are unavailable. Browser drafts are loaded only
+            when requested.
+        </p>
+    </section>
+
+</main>
+
+<div id="status" role="status">
+    Loading sprite definitions…
+</div>
+
+<script src="sprite_definitions.js"></script>
+
+<script>
+(() => {
+"use strict";
+
+/* =========================================================
+   INITIALIZATION
+========================================================= */
+
+const $ = id => document.getElementById(id);
+const clone = value => structuredClone(value);
+
+const status = text => {
+    $("status").textContent = text;
+};
+
+const safe = action => {
+    try {
+        return action();
+    } catch (error) {
+        status(error.message);
+    }
+};
+
+if (
+    typeof SPRITE_COLORS === "undefined" ||
+    typeof SPRITE === "undefined" ||
+    typeof SPRITES === "undefined" ||
+    typeof BLOCK_SPRITES === "undefined" ||
+    typeof ANIMATION === "undefined"
+) {
+    status(
+        "Could not load sprite_definitions.js. " +
+        "Place it beside this editor."
+    );
+
+    return;
+}
+
+let data = clone({
+    SPRITE_COLORS,
+    SPRITE,
+    SPRITES,
+    BLOCK_SPRITES,
+    ANIMATION
+});
+
+let id = 0;
+let selectedColor = 1;
+let stroke = null;
+
+let undo = [];
+let redo = [];
+
+let animationFrame = 0;
+let animationElapsed = 0;
+let lastTime = performance.now();
+
+const source = document.createElement("canvas");
+
+source.width = 16;
+source.height = 16;
+
+const sourceContext = source.getContext("2d");
+const draftKey = "sprite-editor-16-v1";
+
+/* =========================================================
+   VALIDATION
+========================================================= */
+
+function integer(n, min, max, label) {
+    if (
+        !Number.isInteger(n) ||
+        n < min ||
+        n > max
+    ) {
+        throw Error(
+            label + " must be " + min + "–" + max + "."
+        );
+    }
+}
+
+function validName(name) {
+    if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) {
+        throw Error(
+            "Use uppercase names such as SNAKE_1."
+        );
+    }
+
+    if ([
+        "__PROTO__",
+        "PROTOTYPE",
+        "CONSTRUCTOR"
+    ].includes(name)) {
+        throw Error("Choose another name.");
+    }
+}
+
+function validate(value) {
+    if (!value || typeof value !== "object") {
+        throw Error("Expected full sprite data.");
+    }
+
+    const palette = value.SPRITE_COLORS;
+
+    if (
+        !Array.isArray(palette) ||
+        palette.length < 2 ||
+        palette.length > 36 ||
+        palette[0] !== null ||
+        palette.slice(1).some(color =>
+            typeof color !== "string" ||
+            !/^#[0-9a-f]{6}$/i.test(color)
+        )
+    ) {
+        throw Error(
+            "Palette needs null at index 0, then hex colors; " +
+            "maximum 36 entries."
+        );
+    }
+
+    if (
+        !Array.isArray(value.SPRITES) ||
+        !value.SPRITES.length
+    ) {
+        throw Error(
+            "Sprites must be a nonempty array."
+        );
+    }
+
+    for (const pixels of value.SPRITES) {
+        if (
+            !Array.isArray(pixels) ||
+            pixels.length !== 256
+        ) {
+            throw Error(
+                "Each sprite needs exactly 256 pixels."
+            );
+        }
+
+        pixels.forEach(number =>
+            integer(
+                number,
+                0,
+                palette.length - 1,
+                "Pixel color"
+            )
+        );
+    }
+
+    if (
+        !value.SPRITE ||
+        typeof value.SPRITE !== "object" ||
+        Array.isArray(value.SPRITE)
+    ) {
+        throw Error("Missing SPRITE names.");
+    }
+
+    for (const [name, index] of
+        Object.entries(value.SPRITE)
+    ) {
+        validName(name);
+
+        integer(
+            index,
+            0,
+            value.SPRITES.length - 1,
+            "Sprite ID"
+        );
+    }
+
+    if (
+        !Array.isArray(value.BLOCK_SPRITES) ||
+        value.BLOCK_SPRITES.length > 64
+    ) {
+        throw Error("Invalid block mapping.");
+    }
+
+    value.BLOCK_SPRITES.forEach(number =>
+        integer(
+            number,
+            0,
+            value.SPRITES.length - 1,
+            "Mapped sprite"
+        )
+    );
+
+    if (
+        !value.ANIMATION ||
+        typeof value.ANIMATION !== "object" ||
+        Array.isArray(value.ANIMATION)
+    ) {
+        throw Error("Missing animation groups.");
+    }
+
+    for (const [name, frames] of
+        Object.entries(value.ANIMATION)
+    ) {
+        validName(name);
+
+        if (
+            !Array.isArray(frames) ||
+            !frames.length
+        ) {
+            throw Error(
+                "Animation groups need frames."
+            );
+        }
+
+        frames.forEach(number =>
+            integer(
+                number,
+                0,
+                value.SPRITES.length - 1,
+                "Animation sprite ID"
+            )
+        );
+    }
+}
+
+/* =========================================================
+   HISTORY
+========================================================= */
+
+function remember() {
+    undo.push(clone(data));
+
+    if (undo.length > 40)
+        undo.shift();
+
+    redo = [];
+}
+
+function change(action) {
+    const previous = clone(data);
+
+    try {
+        action();
+        validate(data);
+    } catch (error) {
+        data = previous;
+        throw error;
+    }
+
+    undo.push(previous);
+
+    if (undo.length > 40)
+        undo.shift();
+
+    redo = [];
+
+    render();
+    status("Updated.");
+}
+
+/* =========================================================
+   SPRITE NAMES
+========================================================= */
+
+function names(index) {
+    return Object.entries(data.SPRITE)
+        .filter(([, number]) => number === index)
+        .map(([name]) => name);
+}
+
+function title(index) {
+    return (
+        index + ": " +
+        (names(index).join(" / ") || "Unnamed sprite")
+    );
+}
+
+/* =========================================================
+   RENDER SPRITE
+========================================================= */
+
+function drawSprite(canvas, index, grid = false) {
+    const context = canvas.getContext("2d");
+    const pixels = data.SPRITES[index];
+
+    context.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    if (!pixels)
+        return;
+
+    sourceContext.clearRect(0, 0, 16, 16);
+
+    pixels.forEach((number, pixelIndex) => {
+        const color = data.SPRITE_COLORS[number];
+
+        if (color) {
+            sourceContext.fillStyle = color;
+
+            sourceContext.fillRect(
+                pixelIndex % 16,
+                Math.floor(pixelIndex / 16),
+                1,
+                1
+            );
+        }
+    });
+
+    context.imageSmoothingEnabled = false;
+
+    context.drawImage(
+        source,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    if (grid) {
+        const size = canvas.width / 16;
+
+        context.strokeStyle = "#88888866";
+        context.lineWidth = 1;
+
+        for (let number = 0; number <= 16; number++) {
+            context.beginPath();
+
+            context.moveTo(number * size, 0);
+            context.lineTo(
+                number * size,
+                canvas.height
+            );
+
+            context.moveTo(0, number * size);
+            context.lineTo(
+                canvas.width,
+                number * size
+            );
+
+            context.stroke();
+        }
+    }
+}
+
+function pixelText() {
+    return Array.from(
+        { length: 16 },
+
+        (_, y) =>
+            data.SPRITES[id]
+                .slice(y * 16, y * 16 + 16)
+                .map(number => number.toString(36))
+                .join("")
+    ).join("\n");
+}
+
+function refreshPixels() {
+    drawSprite(
+        $("draw"),
+        id,
+        $("grid").checked
+    );
+
+    drawSprite(
+        $("preview"),
+        id
+    );
+
+    $("pixels").value = pixelText();
+}
+
+/* =========================================================
+   PALETTE
+========================================================= */
+
+function refreshPalette() {
+    $("palette").replaceChildren();
+
+    data.SPRITE_COLORS.forEach((color, index) => {
+        const button = document.createElement("button");
+
+        button.type = "button";
+
+        button.className =
+            "swatch" +
+            (index === selectedColor ? " selected" : "") +
+            (color === null ? " checker" : "");
+
+        button.textContent =
+            index.toString(36) + " / " + index;
+
+        button.style.backgroundColor = color || "";
+        button.title = color || "Transparent";
+
+        button.onclick = () => {
+            selectedColor = index;
+            refreshPalette();
+        };
+
+        $("palette").append(button);
+    });
+
+    $("colorLabel").textContent =
+        "Selected: " + selectedColor +
+        " (" + selectedColor.toString(36) + ")";
+
+    $("color").value =
+        data.SPRITE_COLORS[selectedColor] || "#000000";
+
+    $("color").disabled = selectedColor === 0;
+    $("setColor").disabled = selectedColor === 0;
+
+    $("paletteJSON").value =
+        JSON.stringify(
+            data.SPRITE_COLORS,
+            null,
+            2
+        );
+}
+
+/* =========================================================
+   SPRITE PICKER
+========================================================= */
+
+function refreshSprites() {
+    const filter =
+        $("filter").value.trim().toLowerCase();
+
+    $("spriteSelect").replaceChildren();
+    $("sheet").replaceChildren();
+
+    data.SPRITES.forEach((pixels, index) => {
+        if (
+            filter &&
+            !title(index).toLowerCase().includes(filter)
+        ) {
+            return;
+        }
+
+        const option = document.createElement("option");
+
+        option.value = index;
+        option.textContent = title(index);
+
+        $("spriteSelect").append(option);
+
+        const button = document.createElement("button");
+
+        button.title = title(index);
+        button.classList.toggle("active", index === id);
+
+        const thumbnail = document.createElement("canvas");
+
+        thumbnail.width = 32;
+        thumbnail.height = 32;
+        thumbnail.className = "checker";
+
+        drawSprite(
+            thumbnail,
+            index
+        );
+
+        const label = document.createElement("div");
+        label.textContent = index;
+
+        button.append(
+            thumbnail,
+            label
+        );
+
+        button.onclick = () => selectSprite(index);
+
+        $("sheet").append(button);
+    });
+
+    $("spriteSelect").value = id;
+}
+
+function selectSprite(index) {
+    id = index;
+    render();
+}
+
+/* =========================================================
+   ANIMATION GROUPS
+========================================================= */
+
+function refreshGroups(
+    preferred = $("group").value
+) {
+    $("group").replaceChildren();
+
+    for (const name of Object.keys(data.ANIMATION)) {
+        const option = document.createElement("option");
+
+        option.value = name;
+        option.textContent = name;
+
+        $("group").append(option);
+    }
+
+    if (Object.hasOwn(data.ANIMATION, preferred)) {
+        $("group").value = preferred;
+    }
+
+    loadGroup();
+}
+
+function loadGroup() {
+    const name = $("group").value;
+
+    $("groupName").value = name;
+
+    $("frames").value =
+        (data.ANIMATION[name] || []).join(",");
+
+    animationFrame = 0;
+    animationElapsed = 0;
+
+    renderAnimation();
+}
+
+function renderAnimation() {
+    const frames =
+        data.ANIMATION[$("group").value] || [];
+
+    const index = frames.length
+        ? frames[animationFrame % frames.length]
+        : id;
+
+    drawSprite(
+        $("animationPreview"),
+        index
+    );
+
+    $("frameLabel").textContent = frames.length
+        ? (
+            "Frame " +
+            ((animationFrame % frames.length) + 1) +
+            " / " +
+            frames.length +
+            " · sprite " +
+            index
+        )
+        : "No group selected";
+}
+
+/* =========================================================
+   FULL RENDER
+========================================================= */
+
+function render() {
+    id = Math.min(
+        id,
+        data.SPRITES.length - 1
+    );
+
+    selectedColor = Math.min(
+        selectedColor,
+        data.SPRITE_COLORS.length - 1
+    );
+
+    refreshPalette();
+    refreshSprites();
+    refreshPixels();
+    refreshGroups();
+
+    $("spriteHeading").textContent = title(id);
+
+    const blocks = data.BLOCK_SPRITES.flatMap(
+        (number, index) =>
+            number === id ? [index] : []
+    );
+
+    const groups = Object.entries(data.ANIMATION)
+        .filter(([, frames]) => frames.includes(id))
+        .map(([name]) => name);
+
+    $("uses").textContent =
+        "Block IDs: " +
+        (blocks.join(", ") || "none") +
+        " · Groups: " +
+        (groups.join(", ") || "none");
+
+    $("undo").disabled = !undo.length;
+    $("redo").disabled = !redo.length;
+}
+
+/* =========================================================
+   FLOOD FILL
+========================================================= */
+
+function fillRegion(index, color) {
+    const pixels = data.SPRITES[id];
+    const old = pixels[index];
+
+    if (old === color)
+        return;
+
+    const pending = [index];
+    pixels[index] = color;
+
+    while (pending.length) {
+        const number = pending.pop();
+
+        const x = number % 16;
+        const y = Math.floor(number / 16);
+
+        for (const [nx, ny] of [
+            [x - 1, y],
+            [x + 1, y],
+            [x, y - 1],
+            [x, y + 1]
+        ]) {
+            if (
+                nx < 0 ||
+                ny < 0 ||
+                nx > 15 ||
+                ny > 15
+            ) {
+                continue;
+            }
+
+            const next = ny * 16 + nx;
+
+            if (pixels[next] === old) {
+                pixels[next] = color;
+                pending.push(next);
+            }
+        }
+    }
+}
+
+/* =========================================================
+   POINTER DRAWING
+========================================================= */
+
+function atPointer(event) {
+    const rect = $("draw").getBoundingClientRect();
+
+    const x = Math.floor(
+        (event.clientX - rect.left) /
+        rect.width * 16
+    );
+
+    const y = Math.floor(
+        (event.clientY - rect.top) /
+        rect.height * 16
+    );
+
+    return (
+        x >= 0 &&
+        x < 16 &&
+        y >= 0 &&
+        y < 16
+    )
+        ? y * 16 + x
+        : null;
+}
+
+function strokeTo(index) {
+    if (index === null || !stroke)
+        return;
+
+    let x0 = stroke.last === null
+        ? index % 16
+        : stroke.last % 16;
+
+    let y0 = stroke.last === null
+        ? Math.floor(index / 16)
+        : Math.floor(stroke.last / 16);
+
+    const x1 = index % 16;
+    const y1 = Math.floor(index / 16);
+
+    const dx = Math.abs(x1 - x0);
+    const dy = -Math.abs(y1 - y0);
+
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+
+    let error = dx + dy;
+
+    while (true) {
+        data.SPRITES[id][y0 * 16 + x0] =
+            stroke.color;
+
+        if (x0 === x1 && y0 === y1)
+            break;
+
+        const doubled = 2 * error;
+
+        if (doubled >= dy) {
+            error += dy;
+            x0 += sx;
+        }
+
+        if (doubled <= dx) {
+            error += dx;
+            y0 += sy;
+        }
+    }
+
+    stroke.last = index;
+    refreshPixels();
+}
+
+function endStroke() {
+    if (stroke) {
+        stroke = null;
+        render();
+    }
+}
+
+$("draw").oncontextmenu = event => {
+    event.preventDefault();
+};
+
+$("draw").onpointerdown = event => safe(() => {
+    if (
+        event.button !== 0 &&
+        event.button !== 2
+    ) {
+        return;
+    }
+
+    const index = atPointer(event);
+
+    if (index === null)
+        return;
+
+    event.preventDefault();
+
+    if (
+        event.shiftKey ||
+        $("tool").value === "pick"
+    ) {
+        selectedColor = data.SPRITES[id][index];
+        refreshPalette();
+        return;
+    }
+
+    const color = event.button === 2
+        ? 0
+        : selectedColor;
+
+    if ($("tool").value === "fill") {
+        change(() => fillRegion(index, color));
+        return;
+    }
+
+    remember();
+
+    stroke = {
+        color,
+        last: null,
+        pointerID: event.pointerId
+    };
+
+    $("draw").setPointerCapture(
+        event.pointerId
+    );
+
+    strokeTo(index);
+});
+
+$("draw").onpointermove = event => {
+    if (
+        stroke &&
+        stroke.pointerID === event.pointerId
+    ) {
+        strokeTo(atPointer(event));
+    }
+};
+
+$("draw").onpointerup = endStroke;
+$("draw").onpointercancel = endStroke;
+$("draw").onlostpointercapture = endStroke;
+
+/* =========================================================
+   BASIC CONTROLS
+========================================================= */
+
+$("spriteSelect").onchange = () => {
+    selectSprite(
+        Number($("spriteSelect").value)
+    );
+};
+
+$("filter").oninput = refreshSprites;
+$("grid").onchange = refreshPixels;
+
+$("undo").onclick = () => {
+    if (undo.length) {
+        redo.push(clone(data));
+        data = undo.pop();
+
+        render();
+        status("Undone.");
+    }
+};
+
+$("redo").onclick = () => {
+    if (redo.length) {
+        undo.push(clone(data));
+        data = redo.pop();
+
+        render();
+        status("Redone.");
+    }
+};
+
+$("clear").onclick = () => {
+    change(() => data.SPRITES[id].fill(0));
+};
+
+$("fill").onclick = () => {
+    change(() =>
+        data.SPRITES[id].fill(selectedColor)
+    );
+};
+
+/* =========================================================
+   TRANSFORM SPRITE
+========================================================= */
+
+function transform(map) {
+    change(() => {
+        const old = [...data.SPRITES[id]];
+
+        for (let y = 0; y < 16; y++) {
+            for (let x = 0; x < 16; x++) {
+                const [nx, ny] = map(x, y);
+
+                data.SPRITES[id][ny * 16 + nx] =
+                    old[y * 16 + x];
+            }
+        }
+    });
+}
+
+$("flipH").onclick = () => {
+    transform((x, y) => [15 - x, y]);
+};
+
+$("flipV").onclick = () => {
+    transform((x, y) => [x, 15 - y]);
+};
+
+$("rotate").onclick = () => {
+    transform((x, y) => [15 - y, x]);
+};
+
+/* =========================================================
+   EDIT PALETTE
+========================================================= */
+
+$("setColor").onclick = () => safe(() => {
+    if (selectedColor === 0) {
+        throw Error(
+            "Index 0 must stay transparent."
+        );
+    }
+
+    change(() => {
+        data.SPRITE_COLORS[selectedColor] =
+            $("color").value;
+    });
+});
+
+$("applyPalette").onclick = () => safe(() => {
+    const next = JSON.parse(
+        $("paletteJSON").value
+    );
+
+    change(() => {
+        data.SPRITE_COLORS = next;
+    });
+});
+
+/* =========================================================
+   APPEND SPRITES / ALIASES
+========================================================= */
+
+function appendSprite(duplicate) {
+    const name = $("newName").value.trim();
+
+    validName(name);
+
+    if (Object.hasOwn(data.SPRITE, name)) {
+        throw Error(
+            "That sprite name already exists."
+        );
+    }
+
+    change(() => {
+        const pixels = duplicate
+            ? [...data.SPRITES[id]]
+            : Array(256).fill(0);
+
+        const next = data.SPRITES.length;
+
+        data.SPRITES.push(pixels);
+        data.SPRITE[name] = next;
+
+        id = next;
+    });
+
+    $("newName").value = "";
+    $("filter").value = "";
+
+    refreshSprites();
+}
+
+$("newSprite").onclick = () => safe(() => {
+    appendSprite(false);
+});
+
+$("duplicate").onclick = () => safe(() => {
+    appendSprite(true);
+});
+
+$("addAlias").onclick = () => safe(() => {
+    const name = $("alias").value.trim();
+
+    validName(name);
+
+    if (Object.hasOwn(data.SPRITE, name)) {
+        throw Error(
+            "That name already exists."
+        );
+    }
+
+    change(() => {
+        data.SPRITE[name] = id;
+    });
+
+    $("alias").value = "";
+});
+
+/* =========================================================
+   APPLY PIXEL TEXT
+========================================================= */
+
+$("applyPixels").onclick = () => safe(() => {
+    const text = $("pixels").value.trim();
+
+    let pixels;
+
+    if (text.startsWith("[")) {
+        pixels = JSON.parse(text).flat();
+    } else {
+        const clean = text.replace(
+            /[\s"',]/g,
+            ""
+        );
+
+        if (!/^[0-9a-z]{256}$/i.test(clean)) {
+            throw Error(
+                "Provide 256 base-36 pixels " +
+                "or a numeric JSON array."
+            );
+        }
+
+        pixels = Array.from(
+            clean,
+            color => parseInt(color, 36)
+        );
+    }
+
+    change(() => {
+        data.SPRITES[id] = pixels;
+    });
+});
+
+$("showSprite").onclick = () => {
+    const pixels = data.SPRITES[id]
+        .map(number => number.toString(36))
+        .join("");
+
+    $("output").value =
+        "// " + title(id) + "\n" +
+        "// Replace SPRITES[" + id + "] source entry:\n" +
+        JSON.stringify(pixels) +
+        ",\n";
+};
+
+/* =========================================================
+   EDIT ANIMATION GROUPS
+========================================================= */
+
+$("group").onchange = loadGroup;
+
+$("newGroup").onclick = () => {
+    $("group").value = "";
+    $("groupName").value = "";
+    $("frames").value = String(id);
+
+    renderAnimation();
+};
+
+$("appendFrame").onclick = () => {
+    $("frames").value = [
+        $("frames").value.trim(),
+        String(id)
+    ]
+        .filter(Boolean)
+        .join(",");
+
+    status(
+        "Frame added to the field. " +
+        "Save group to apply."
+    );
+};
+
+$("saveGroup").onclick = () => safe(() => {
+    const name = $("groupName").value.trim();
+
+    validName(name);
+
+    const text = $("frames").value.trim();
+
+    if (!text) {
+        throw Error(
+            "A group needs at least one frame."
+        );
+    }
+
+    const frames = text.split(",").map(value =>
+        value.trim()
+            ? Number(value.trim())
+            : NaN
+    );
+
+    change(() => {
+        data.ANIMATION[name] = frames;
+    });
+
+    refreshGroups(name);
+});
+
+$("deleteGroup").onclick = () => safe(() => {
+    const name = $("group").value;
+
+    if (
+        name &&
+        confirm(
+            "Delete animation group " + name + "?"
+        )
+    ) {
+        change(() => {
+            delete data.ANIMATION[name];
+        });
+    }
+});
+
+/* =========================================================
+   COMPLETE DEFINITIONS EXPORT
+========================================================= */
+
+function definitionsJS() {
+    validate(data);
+
+    const sprites = data.SPRITES.map(
+        (pixels, index) => {
+            const text = pixels
+                .map(number => number.toString(36))
+                .join("");
+
+            return (
+                "    // " + title(index) + "\n" +
+                "    " + JSON.stringify(text)
+            );
+        }
+    ).join(",\n\n");
+
+    return (
+        '"use strict";\n\n' +
+
+        "const SPRITE_COLORS = " +
+        JSON.stringify(
+            data.SPRITE_COLORS,
+            null,
+            4
+        ) +
+        ";\n\n" +
+
+        "const SPRITE = " +
+        JSON.stringify(
+            data.SPRITE,
+            null,
+            4
+        ) +
+        ";\n\n" +
+
+        "const SPRITES = [\n" +
+        sprites +
+        "\n].map(pixels => Array.from(" +
+        "pixels, color => parseInt(color, 36)));\n\n" +
+
+        "const BLOCK_SPRITES = " +
+        JSON.stringify(
+            data.BLOCK_SPRITES,
+            null,
+            4
+        ) +
+        ";\n\n" +
+
+        "const ANIMATION = " +
+        JSON.stringify(
+            data.ANIMATION,
+            null,
+            4
+        ) +
+        ";\n"
+    );
+}
+
+function download(name, text, type) {
+    const url = URL.createObjectURL(
+        new Blob([text], { type })
+    );
+
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = name;
+    link.click();
+
+    setTimeout(
+        () => URL.revokeObjectURL(url),
+        1000
+    );
+}
+
+$("showDefinitions").onclick = () => safe(() => {
+    $("output").value = definitionsJS();
+
+    status(
+        "Complete sprite_definitions.js ready to copy."
+    );
+});
+
+$("downloadDefinitions").onclick = () => safe(() => {
+    const text = definitionsJS();
+
+    $("output").value = text;
+
+    download(
+        "sprite_definitions.js",
+        text,
+        "text/javascript"
+    );
+});
+
+/* =========================================================
+   JSON IMPORT / EXPORT
+========================================================= */
+
+$("showJSON").onclick = () => {
+    $("output").value = JSON.stringify(
+        data,
+        null,
+        2
+    );
+};
+
+$("importJSON").onclick = () => safe(() => {
+    const next = JSON.parse(
+        $("output").value
+    );
+
+    validate(next);
+
+    change(() => {
+        data = clone(next);
+    });
+
+    status("Full sprite data imported.");
+});
+
+/* =========================================================
+   COPY OUTPUT
+========================================================= */
+
+$("copy").onclick = async () => {
+    try {
+        await navigator.clipboard.writeText(
+            $("output").value
+        );
+
+        status("Copied.");
+    } catch {
+        $("output").focus();
+        $("output").select();
+
+        status(
+            "Output selected. " +
+            "Press Command+C or Ctrl+C."
+        );
+    }
+};
+
+/* =========================================================
+   BROWSER DRAFT
+========================================================= */
+
+$("saveDraft").onclick = () => safe(() => {
+    localStorage.setItem(
+        draftKey,
+        JSON.stringify(data)
+    );
+
+    status("Browser draft saved.");
+});
+
+$("loadDraft").onclick = () => safe(() => {
+    const raw = localStorage.getItem(
+        draftKey
+    );
+
+    if (!raw) {
+        throw Error(
+            "No browser draft found."
+        );
+    }
+
+    const next = JSON.parse(raw);
+
+    validate(next);
+
+    change(() => {
+        data = next;
+    });
+
+    status("Browser draft loaded.");
+});
+
+/* =========================================================
+   ANIMATION PREVIEW LOOP
+========================================================= */
+
+function tick(now) {
+    animationElapsed += Math.min(
+        now - lastTime,
+        250
+    );
+
+    lastTime = now;
+
+    const fps = Math.max(
+        1,
+        Math.min(
+            30,
+            Number($("fps").value) || 4
+        )
+    );
+
+    if (animationElapsed >= 1000 / fps) {
+        animationElapsed %= 1000 / fps;
+        animationFrame++;
+
+        renderAnimation();
+    }
+
+    requestAnimationFrame(tick);
+}
+
+/* =========================================================
+   START
+========================================================= */
+
+safe(() => {
+    validate(data);
+    render();
+
+    status(
+        "Loaded " +
+        data.SPRITES.length +
+        " sprites, " +
+        data.SPRITE_COLORS.length +
+        " colors and " +
+        Object.keys(data.ANIMATION).length +
+        " animation groups."
+    );
+
+    requestAnimationFrame(tick);
+});
+
+})();
+</script>
+
+</body>
+</html>

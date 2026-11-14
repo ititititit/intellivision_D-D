@@ -1,0 +1,2147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dungeon / Monster / Object Editor</title>
+
+<style>
+:root {
+    color-scheme: dark;
+    font: 14px Arial, sans-serif;
+    background: #131c22;
+    color: #e4e9df;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; }
+
+header {
+    padding: 18px 22px;
+    background: #1b2b32;
+    border-bottom: 1px solid #45606a;
+}
+
+h1 {
+    font-size: 24px;
+    margin: 0 0 8px;
+}
+
+h2 {
+    font-size: 17px;
+    margin: 0 0 12px;
+}
+
+h3 {
+    font-size: 14px;
+    color: #b4d8c8;
+}
+
+main {
+    display: grid;
+    grid-template-columns: 250px minmax(350px,1fr) 380px;
+    gap: 16px;
+    padding: 18px;
+    max-width: 1650px;
+    margin: auto;
+}
+
+section,
+aside {
+    background: #1c2a32;
+    border: 1px solid #38515b;
+    border-radius: 8px;
+    padding: 16px;
+    min-width: 0;
+}
+
+label {
+    display: block;
+    margin: 10px 0 4px;
+    color: #b9cabb;
+}
+
+input,
+select,
+textarea,
+button {
+    font: inherit;
+    background: #111c23;
+    color: #e7efea;
+    border: 1px solid #4a626b;
+    border-radius: 4px;
+    padding: 7px;
+    max-width: 100%;
+}
+
+input:not([type=checkbox]),
+select,
+textarea {
+    width: 100%;
+}
+
+select[multiple] {
+    min-height: 130px;
+}
+
+textarea {
+    font: 12px/1.5 monospace;
+    resize: vertical;
+}
+
+button { cursor: pointer; }
+
+button:hover,
+button.active {
+    background: #3b6654;
+}
+
+.row {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin: 10px 0;
+}
+
+.row > * { flex: 1; }
+
+.small {
+    font-size: 12px;
+    line-height: 1.5;
+    color: #a5b9bd;
+}
+
+.check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.card {
+    border: 1px solid #45606a;
+    border-radius: 5px;
+    padding: 10px;
+    margin: 10px 0;
+}
+
+canvas {
+    width: 128px;
+    height: 128px;
+    image-rendering: pixelated;
+    background: #101619;
+    border: 1px solid #45606a;
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid #38515b;
+    margin: 16px 0;
+}
+
+summary {
+    cursor: pointer;
+    color: #e4c67a;
+    margin: 8px 0;
+}
+
+#status {
+    padding: 12px 22px;
+    color: #e4c67a;
+    white-space: pre-wrap;
+}
+
+#usage {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+@media(max-width:1150px) {
+    main {
+        grid-template-columns: 230px 1fr;
+    }
+
+    .exports {
+        grid-column: 1/-1;
+    }
+}
+
+@media(max-width:700px) {
+    main { display: block; }
+
+    section,
+    aside {
+        margin-bottom: 12px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>Dungeon / Monster / Object Editor</h1>
+
+    <p class="small">
+        Edit shared definitions.
+        Existing IDs remain stable.
+        Copy replacement declarations into their original files.
+    </p>
+
+    <div class="row">
+        <button data-tab="dungeons">Dungeons</button>
+        <button data-tab="monsters">Monsters</button>
+        <button data-tab="objects">Objects</button>
+    </div>
+</header>
+
+<main>
+
+    <aside>
+        <h2 id="listTitle">Definitions</h2>
+
+        <label for="search">Filter</label>
+        <input id="search">
+
+        <label for="picker">Definition</label>
+        <select id="picker" size="13"></select>
+
+        <hr>
+
+        <label for="newName">
+            New dungeon key / object constant
+        </label>
+
+        <input
+            id="newName"
+            placeholder="water or NEW_MONSTER">
+
+        <button id="add">Add definition</button>
+
+        <p id="addHelp" class="small"></p>
+
+        <hr>
+
+        <h2>Artwork preview</h2>
+
+        <canvas
+            id="preview"
+            width="16"
+            height="16">
+        </canvas>
+
+        <p id="previewLabel" class="small"></p>
+
+        <h3>References</h3>
+        <div id="usage" class="small"></div>
+    </aside>
+
+    <section>
+        <h2 id="heading">Editor</h2>
+
+        <div id="form"></div>
+
+        <details>
+            <summary>
+                Complete selected definition JSON
+            </summary>
+
+            <textarea
+                id="entryJSON"
+                rows="16"
+                spellcheck="false">
+            </textarea>
+
+            <button id="applyEntry">
+                Apply selected JSON
+            </button>
+
+            <p class="small">
+                Extra fields are preserved.
+                Infinity is represented as
+                {"$number":"Infinity"} in JSON.
+            </p>
+        </details>
+    </section>
+
+    <section class="exports">
+        <h2>Copy / export</h2>
+
+        <p class="small">
+            JavaScript output contains replacement declarations,
+            not a complete replacement for dungeon_definitions.js.
+            Replace each matching declaration once;
+            leave the rest of the file intact.
+        </p>
+
+        <div class="row">
+            <button id="showTab">
+                Show current tab JS
+            </button>
+
+            <button id="showAll">
+                Show all JS
+            </button>
+        </div>
+
+        <textarea
+            id="output"
+            rows="23"
+            spellcheck="false"
+            aria-label="Copyable JavaScript or JSON">
+        </textarea>
+
+        <div class="row">
+            <button id="copy">Copy output</button>
+            <button id="download">
+                Download declarations
+            </button>
+        </div>
+
+        <div class="row">
+            <button id="showJSON">Show all JSON</button>
+            <button id="importJSON">Import all JSON</button>
+        </div>
+
+        <div class="row">
+            <button id="saveDraft">Save browser draft</button>
+            <button id="loadDraft">Load draft</button>
+        </div>
+
+        <div class="row">
+            <button id="undo">Undo</button>
+            <button id="redo">Redo</button>
+        </div>
+
+        <p class="small">
+            Edits are applied when a field changes.
+            Save a browser draft or copy your output before closing.
+            No dungeon generation, movement, combat,
+            or sound playback runs here.
+        </p>
+    </section>
+
+</main>
+
+<div id="status" role="status">
+    Loading definitions…
+</div>
+
+<script src="sound.js"></script>
+<script src="sprite_definitions.js"></script>
+<script src="dungeon_definitions.js"></script>
+<script src="room_definitions.js"></script>
+
+<!-- Change this filename if your monster file has another name. -->
+<script src="monster_movement.js"></script>
+
+<script>
+(() => {
+"use strict";
+
+/* =========================================================
+   INITIALIZATION
+========================================================= */
+
+const $ = id => document.getElementById(id);
+const clone = value => structuredClone(value);
+
+const status = text => {
+    $("status").textContent = text;
+};
+
+const safe = action => {
+    try {
+        return action();
+    } catch (error) {
+        status(error.message);
+    }
+};
+
+if (
+    typeof DUNGEON_CONTENT === "undefined" ||
+    typeof OBJECT === "undefined" ||
+    typeof OBJECT_DEFS === "undefined" ||
+    typeof PLACEMENT_OBJECT_TYPES === "undefined" ||
+    typeof MONSTER_BEHAVIOR === "undefined" ||
+    typeof SPRITES === "undefined" ||
+    typeof SPRITE === "undefined" ||
+    typeof SPRITE_COLORS === "undefined" ||
+    typeof ROOMS === "undefined" ||
+    typeof SOUND === "undefined"
+) {
+    status(
+        "Definitions did not load. Check the script filenames, " +
+        "including the file containing MONSTER_BEHAVIOR."
+    );
+
+    return;
+}
+
+const maxSpeed =
+    typeof MAX_MONSTER_SPEED === "number"
+        ? MAX_MONSTER_SPEED
+        : 1 / 4;
+
+let data = clone({
+    DUNGEON_CONTENT,
+    OBJECT,
+    OBJECT_DEFS,
+    PLACEMENT_OBJECT_TYPES,
+    MONSTER_BEHAVIOR,
+
+    MONSTER_SOUNDS:
+        typeof MONSTER_SOUNDS === "undefined"
+            ? {}
+            : MONSTER_SOUNDS
+});
+
+let tab = "dungeons";
+let key = Object.keys(data.DUNGEON_CONTENT)[0];
+
+let undo = [];
+let redo = [];
+
+const draftKey = "dungeon-content-editor-v1";
+
+const booleanFields = [
+    "canChase",
+    "canWander",
+    "canFly",
+    "visibleInDark",
+    "makesSleepingSound",
+    "makesAwakeSound",
+    "leavesTracks",
+    "stealsArrows",
+    "masksSounds",
+    "invulnerable"
+];
+
+const numberFields = [
+    "speed",
+    "forgetTime",
+    "hearingRange",
+    "awakenCheckInterval",
+    "damage",
+    "damageInterval"
+];
+
+const friendlyLabels = {
+    speed:
+        "Speed (player = 0.125; maximum = " +
+        maxSpeed + ")",
+
+    forgetTime: "Forget time (ms)",
+    hearingRange: "Hearing range (tiles)",
+    awakenCheckInterval: "Awakening check interval (ms)",
+    damage: "Contact damage",
+    damageInterval: "Damage interval (ms)"
+};
+
+/* =========================================================
+   SERIALIZATION
+
+   Preserve Infinity in both JSON and JavaScript exports.
+========================================================= */
+
+function stringify(value) {
+    return JSON.stringify(
+        value,
+
+        (_, entry) =>
+            entry === Infinity
+                ? { $number: "Infinity" }
+                : entry,
+
+        2
+    );
+}
+
+function parse(text) {
+    return JSON.parse(
+        text,
+
+        (_, entry) =>
+            entry &&
+            typeof entry === "object" &&
+            !Array.isArray(entry) &&
+            Object.keys(entry).length === 1 &&
+            entry.$number === "Infinity"
+                ? Infinity
+                : entry
+    );
+}
+
+function js(value, depth = 0) {
+    const indent = "    ".repeat(depth);
+    const next = "    ".repeat(depth + 1);
+
+    if (value === Infinity)
+        return "Infinity";
+
+    if (
+        value === null ||
+        typeof value !== "object"
+    ) {
+        return JSON.stringify(value);
+    }
+
+    const array = Array.isArray(value);
+
+    const entries = array
+        ? value.map(entry => js(entry, depth + 1))
+        : Object.entries(value).map(
+            ([name, entry]) =>
+                JSON.stringify(name) +
+                ": " +
+                js(entry, depth + 1)
+        );
+
+    return (
+        (array ? "[" : "{") +
+
+        (
+            entries.length
+                ? (
+                    "\n" +
+                    entries.map(entry => next + entry).join(",\n") +
+                    "\n" +
+                    indent
+                )
+                : ""
+        ) +
+
+        (array ? "]" : "}")
+    );
+}
+
+/* =========================================================
+   VALIDATION
+========================================================= */
+
+function integer(value, min, max, label) {
+    if (
+        !Number.isInteger(value) ||
+        value < min ||
+        value > max
+    ) {
+        throw Error(
+            label + " must be " + min + "–" + max + "."
+        );
+    }
+}
+
+function finite(value, min, label) {
+    if (
+        !Number.isFinite(value) ||
+        value < min
+    ) {
+        throw Error(
+            label + " must be a number >= " + min + "."
+        );
+    }
+}
+
+function objectExists(definitions, id) {
+    return (
+        Number.isInteger(id) &&
+        Object.values(definitions.OBJECT).includes(id) &&
+        Array.isArray(definitions.OBJECT_DEFS[id])
+    );
+}
+
+function validate(definitions) {
+    for (const part of [
+        "DUNGEON_CONTENT",
+        "OBJECT",
+        "PLACEMENT_OBJECT_TYPES",
+        "MONSTER_BEHAVIOR",
+        "MONSTER_SOUNDS"
+    ]) {
+        if (
+            !definitions[part] ||
+            typeof definitions[part] !== "object" ||
+            Array.isArray(definitions[part])
+        ) {
+            throw Error("Missing " + part + " object.");
+        }
+    }
+
+    if (!Array.isArray(definitions.OBJECT_DEFS)) {
+        throw Error("OBJECT_DEFS must be an array.");
+    }
+
+    for (const [name, id] of
+        Object.entries(definitions.OBJECT)
+    ) {
+        if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) {
+            throw Error(
+                "Invalid object constant: " + name
+            );
+        }
+
+        integer(
+            id,
+            0,
+            definitions.OBJECT_DEFS.length - 1,
+            "Object ID"
+        );
+    }
+
+    definitions.OBJECT_DEFS.forEach((frames, id) => {
+        if (
+            !Array.isArray(frames) ||
+            frames.length !== 2
+        ) {
+            throw Error(
+                "Object " + id + " needs two frame values."
+            );
+        }
+
+        integer(
+            frames[0],
+            0,
+            SPRITES.length - 1,
+            "First sprite frame"
+        );
+
+        integer(
+            frames[1],
+            -1,
+            SPRITES.length - 1,
+            "Second sprite frame"
+        );
+    });
+
+    for (const [name, id] of
+        Object.entries(definitions.PLACEMENT_OBJECT_TYPES)
+    ) {
+        if (
+            !name.trim() ||
+            !objectExists(definitions, id)
+        ) {
+            throw Error(
+                "Invalid placement mapping: " + name
+            );
+        }
+    }
+
+    if (!definitions.MONSTER_BEHAVIOR.default) {
+        throw Error(
+            "Keep the default monster behavior."
+        );
+    }
+
+    for (const [id, behavior] of
+        Object.entries(definitions.MONSTER_BEHAVIOR)
+    ) {
+        if (
+            id !== "default" &&
+            !objectExists(definitions, Number(id))
+        ) {
+            throw Error(
+                "Unknown monster object ID: " + id
+            );
+        }
+
+        if (
+            !behavior ||
+            typeof behavior !== "object" ||
+            ![
+                "sleeping",
+                "wandering",
+                "chasing"
+            ].includes(behavior.initialState)
+        ) {
+            throw Error(
+                "Invalid initialState for " + id
+            );
+        }
+
+        for (const name of numberFields) {
+            finite(
+                behavior[name],
+                0,
+                name
+            );
+        }
+
+        if (behavior.speed > maxSpeed) {
+            throw Error(
+                "Monster speed exceeds " + maxSpeed + "."
+            );
+        }
+
+        if (behavior.health !== Infinity) {
+            finite(
+                behavior.health,
+                0,
+                "Health"
+            );
+
+            if (behavior.health === 0) {
+                throw Error(
+                    "Health must be positive."
+                );
+            }
+        }
+
+        for (const name of booleanFields) {
+            if (
+                behavior[name] !== undefined &&
+                typeof behavior[name] !== "boolean"
+            ) {
+                throw Error(
+                    name + " must be true or false."
+                );
+            }
+        }
+    }
+
+    const sounds = Object.values(SOUND);
+
+    for (const [id, sound] of
+        Object.entries(definitions.MONSTER_SOUNDS)
+    ) {
+        if (
+            !objectExists(definitions, Number(id)) ||
+            !sounds.includes(sound)
+        ) {
+            throw Error(
+                "Invalid monster sound mapping."
+            );
+        }
+    }
+
+    const placement = name => {
+        if (
+            typeof name !== "string" ||
+            !Object.hasOwn(
+                definitions.PLACEMENT_OBJECT_TYPES,
+                name
+            )
+        ) {
+            throw Error(
+                "Unknown placement name: " + name
+            );
+        }
+    };
+
+    const roomList = ids => {
+        if (
+            !Array.isArray(ids) ||
+            !ids.length
+        ) {
+            throw Error(
+                "Choose at least one room."
+            );
+        }
+
+        ids.forEach(id => {
+            integer(id, 0, 15, "Room ID");
+
+            if (!Array.isArray(ROOMS[id])) {
+                throw Error(
+                    "Room " + id + " has no definition."
+                );
+            }
+        });
+    };
+
+    for (const [name, content] of
+        Object.entries(definitions.DUNGEON_CONTENT)
+    ) {
+        if (
+            !name.trim() ||
+            !content ||
+            typeof content !== "object"
+        ) {
+            throw Error(
+                "Invalid dungeon definition."
+            );
+        }
+
+        roomList(content.rooms);
+
+        if (
+            content.specialRooms !== undefined &&
+            !Array.isArray(content.specialRooms)
+        ) {
+            throw Error(
+                "Special rooms must be an array."
+            );
+        }
+
+        for (const rule of content.specialRooms || []) {
+            roomList(rule.choices);
+
+            integer(
+                rule.count,
+                1,
+                1000000,
+                "Special-room count"
+            );
+        }
+
+        if (
+            !content.exit ||
+            !Array.isArray(content.exit.guardians) ||
+            !content.exit.guardians.length
+        ) {
+            throw Error(
+                "Exit needs guardians."
+            );
+        }
+
+        placement(content.exit.type);
+        content.exit.guardians.forEach(placement);
+
+        if (
+            content.exit.color !== null &&
+            typeof content.exit.color !== "string"
+        ) {
+            throw Error(
+                "Exit color must be text or null."
+            );
+        }
+
+        if (
+            !Array.isArray(content.items) ||
+            !Array.isArray(content.randomMonsters)
+        ) {
+            throw Error(
+                "Items and randomMonsters must be arrays."
+            );
+        }
+
+        for (const item of content.items) {
+            placement(item.type);
+            placement(item.guardian);
+        }
+
+        if (content.guaranteedMonster !== null) {
+            placement(content.guaranteedMonster);
+        }
+
+        content.randomMonsters.forEach(placement);
+    }
+}
+
+/* =========================================================
+   EDIT HISTORY
+========================================================= */
+
+function mutate(action) {
+    const before = clone(data);
+
+    try {
+        action();
+        validate(data);
+    } catch (error) {
+        data = before;
+        render();
+        throw error;
+    }
+
+    undo.push(before);
+
+    if (undo.length > 40)
+        undo.shift();
+
+    redo = [];
+
+    render();
+    status("Updated.");
+}
+
+/* =========================================================
+   CHOICE LISTS
+========================================================= */
+
+function objectName(id) {
+    return (
+        Object.entries(data.OBJECT)
+            .filter(([, value]) => value === Number(id))
+            .map(([name]) => name)
+            .join(" / ") ||
+
+        "Object " + id
+    );
+}
+
+function objectOptions() {
+    return [...new Set(Object.values(data.OBJECT))]
+        .sort((a, b) => a - b)
+        .map(id => [
+            String(id),
+            id + ": " + objectName(id)
+        ]);
+}
+
+function placementOptions(monsters = false) {
+    return Object.entries(data.PLACEMENT_OBJECT_TYPES)
+        .filter(([, id]) =>
+            !monsters ||
+            Object.hasOwn(data.MONSTER_BEHAVIOR, id)
+        )
+        .map(([name, id]) => [
+            name,
+            name + " — " + objectName(id)
+        ]);
+}
+
+function roomOptions() {
+    return ROOMS.flatMap((room, id) => {
+        if (!room)
+            return [];
+
+        const name =
+            typeof ROOM_EXTENSIONS !== "undefined"
+                ? ROOM_EXTENSIONS[id]?.name || "Room " + id
+                : "Room " + id;
+
+        return [[
+            String(id),
+            id + ": " + name
+        ]];
+    });
+}
+
+function spriteOptions() {
+    return SPRITES.map((_, id) => [
+        String(id),
+
+        id + ": " +
+        (
+            Object.keys(SPRITE).find(
+                name => SPRITE[name] === id
+            ) ||
+            "Unnamed"
+        )
+    ]);
+}
+
+/* =========================================================
+   FORM HELPERS
+========================================================= */
+
+function button(parent, text, action) {
+    const element = document.createElement("button");
+
+    element.textContent = text;
+    element.type = "button";
+    element.onclick = () => safe(action);
+
+    parent.append(element);
+
+    return element;
+}
+
+function field(
+    parent,
+    label,
+    type,
+    value,
+    onChange,
+    choices = []
+) {
+    const labelElement = document.createElement("label");
+
+    labelElement.textContent = label;
+
+    const element = document.createElement(
+        type === "select" || type === "multi"
+            ? "select"
+            : "input"
+    );
+
+    if (
+        type === "select" ||
+        type === "multi"
+    ) {
+        element.multiple = type === "multi";
+
+        const values = type === "multi"
+            ? (value || []).map(String)
+            : [String(value ?? "")];
+
+        const options = [...choices];
+
+        for (const existing of values) {
+            if (!options.some(
+                ([name]) => String(name) === existing
+            )) {
+                options.unshift([
+                    existing,
+                    existing + " (existing value)"
+                ]);
+            }
+        }
+
+        for (const [optionValue, text] of options) {
+            const option = document.createElement("option");
+
+            option.value = optionValue;
+            option.textContent = text;
+
+            option.selected = values.includes(
+                String(optionValue)
+            );
+
+            element.append(option);
+        }
+    } else {
+        element.type = type;
+
+        if (type === "checkbox")
+            element.checked = Boolean(value);
+        else
+            element.value = value ?? "";
+
+        if (type === "number")
+            element.step = "any";
+    }
+
+    element.setAttribute(
+        "aria-label",
+        label
+    );
+
+    element.onchange = () => safe(() => {
+        const result =
+            type === "checkbox"
+                ? element.checked
+                : type === "number"
+                    ? Number(element.value)
+                    : type === "multi"
+                        ? [...element.selectedOptions].map(
+                            option => option.value
+                        )
+                        : element.value;
+
+        onChange(result);
+    });
+
+    if (type === "checkbox") {
+        labelElement.className = "check";
+        labelElement.prepend(element);
+        parent.append(labelElement);
+    } else {
+        parent.append(
+            labelElement,
+            element
+        );
+    }
+
+    return element;
+}
+
+/* =========================================================
+   SELECTED ENTRY
+========================================================= */
+
+function entries() {
+    if (tab === "dungeons") {
+        return Object.keys(data.DUNGEON_CONTENT)
+            .map(name => [name, name]);
+    }
+
+    if (tab === "monsters") {
+        return Object.keys(data.MONSTER_BEHAVIOR)
+            .map(id => [
+                id,
+
+                id === "default"
+                    ? "Default behavior"
+                    : id + ": " + objectName(id)
+            ]);
+    }
+
+    return objectOptions();
+}
+
+function selectedEntry() {
+    if (tab === "dungeons")
+        return data.DUNGEON_CONTENT[key];
+
+    if (tab === "monsters")
+        return data.MONSTER_BEHAVIOR[key];
+
+    const id = Number(key);
+
+    return {
+        names: Object.keys(data.OBJECT).filter(
+            name => data.OBJECT[name] === id
+        ),
+
+        frames: data.OBJECT_DEFS[id],
+
+        placementNames:
+            Object.keys(data.PLACEMENT_OBJECT_TYPES).filter(
+                name =>
+                    data.PLACEMENT_OBJECT_TYPES[name] === id
+            )
+    };
+}
+
+function refreshPicker() {
+    const options = entries();
+
+    if (!options.some(([name]) => name === key)) {
+        key = options[0]?.[0] || "";
+    }
+
+    const filter = $("search").value.toLowerCase();
+
+    $("picker").replaceChildren();
+
+    for (const [name, label] of options) {
+        if (
+            filter &&
+            !label.toLowerCase().includes(filter)
+        ) {
+            continue;
+        }
+
+        const option = document.createElement("option");
+
+        option.value = name;
+        option.textContent = label;
+
+        $("picker").append(option);
+    }
+
+    $("picker").value = key;
+}
+
+/* =========================================================
+   DUNGEON FORM
+========================================================= */
+
+function renderDungeon(root, content) {
+    field(
+        root,
+        "Eligible normal rooms (Ctrl/Command-click for multiple)",
+        "multi",
+        content.rooms,
+
+        values => mutate(() => {
+            content.rooms = values.map(Number);
+        }),
+
+        roomOptions()
+    );
+
+    const heading = document.createElement("h3");
+
+    heading.textContent = "Required special rooms";
+    root.append(heading);
+
+    (content.specialRooms || []).forEach((rule, index) => {
+        const card = document.createElement("div");
+        card.className = "card";
+
+        field(
+            card,
+            "Room choices for rule " + (index + 1),
+            "multi",
+            rule.choices,
+
+            values => mutate(() => {
+                rule.choices = values.map(Number);
+            }),
+
+            roomOptions()
+        );
+
+        field(
+            card,
+            "Required count",
+            "number",
+            rule.count,
+
+            value => mutate(() => {
+                rule.count = value;
+            })
+        );
+
+        button(
+            card,
+            "Remove rule",
+
+            () => mutate(() => {
+                content.specialRooms.splice(index, 1);
+            })
+        );
+
+        root.append(card);
+    });
+
+    button(
+        root,
+        "Add special-room rule",
+
+        () => mutate(() => {
+            content.specialRooms ??= [];
+
+            content.specialRooms.push({
+                choices: [
+                    Number(roomOptions()[0][0])
+                ],
+                count: 1
+            });
+        })
+    );
+
+    field(
+        root,
+        "Exit object",
+        "select",
+        content.exit.type,
+
+        value => mutate(() => {
+            content.exit.type = value;
+        }),
+
+        placementOptions()
+    );
+
+    field(
+        root,
+        "Exit color (blank = null)",
+        "text",
+        content.exit.color ?? "",
+
+        value => mutate(() => {
+            content.exit.color = value.trim() || null;
+        })
+    );
+
+    field(
+        root,
+        "Exit guardians",
+        "multi",
+        content.exit.guardians,
+
+        values => mutate(() => {
+            content.exit.guardians = values;
+        }),
+
+        placementOptions(true)
+    );
+
+    const itemHeading = document.createElement("h3");
+
+    itemHeading.textContent = "Required items";
+    root.append(itemHeading);
+
+    content.items.forEach((item, index) => {
+        const card = document.createElement("div");
+        card.className = "card";
+
+        field(
+            card,
+            "Item " + (index + 1),
+            "select",
+            item.type,
+
+            value => mutate(() => {
+                item.type = value;
+            }),
+
+            placementOptions()
+        );
+
+        field(
+            card,
+            "Guardian",
+            "select",
+            item.guardian,
+
+            value => mutate(() => {
+                item.guardian = value;
+            }),
+
+            placementOptions(true)
+        );
+
+        button(
+            card,
+            "Remove item",
+
+            () => mutate(() => {
+                content.items.splice(index, 1);
+            })
+        );
+
+        root.append(card);
+    });
+
+    button(
+        root,
+        "Add required item",
+
+        () => mutate(() => {
+            content.items.push({
+                type: placementOptions()[0][0],
+
+                guardian:
+                    placementOptions(true)[0]?.[0] ||
+                    content.exit.guardians[0]
+            });
+        })
+    );
+
+    field(
+        root,
+        "Guaranteed additional monster",
+        "select",
+        content.guaranteedMonster ?? "",
+
+        value => mutate(() => {
+            content.guaranteedMonster = value || null;
+        }),
+
+        [
+            ["", "None / choose randomly"],
+            ...placementOptions(true)
+        ]
+    );
+
+    field(
+        root,
+        "Eligible random monsters",
+        "multi",
+        content.randomMonsters,
+
+        values => mutate(() => {
+            content.randomMonsters = values;
+        }),
+
+        placementOptions(true)
+    );
+}
+
+/* =========================================================
+   MONSTER FORM
+========================================================= */
+
+function renderMonster(root, behavior) {
+    field(
+        root,
+        "Initial state",
+        "select",
+        behavior.initialState,
+
+        value => mutate(() => {
+            behavior.initialState = value;
+        }),
+
+        [
+            ["sleeping", "Sleeping"],
+            ["wandering", "Wandering"],
+            ["chasing", "Chasing"]
+        ]
+    );
+
+    field(
+        root,
+        "Health (number or Infinity)",
+        "text",
+        String(behavior.health),
+
+        value => mutate(() => {
+            behavior.health =
+                value.trim() === "Infinity"
+                    ? Infinity
+                    : Number(value);
+        })
+    );
+
+    for (const name of numberFields) {
+        field(
+            root,
+            friendlyLabels[name] || name,
+            "number",
+            behavior[name],
+
+            value => mutate(() => {
+                behavior[name] = value;
+            })
+        );
+    }
+
+    for (const name of booleanFields) {
+        field(
+            root,
+            name,
+            "checkbox",
+            behavior[name] ?? false,
+
+            value => mutate(() => {
+                behavior[name] = value;
+            })
+        );
+    }
+
+    if (key !== "default") {
+        const soundOptions = [
+            ["", "No assigned sound"],
+
+            ...Object.entries(SOUND).map(
+                ([name]) => [name, name]
+            )
+        ];
+
+        const soundName =
+            Object.keys(SOUND).find(
+                name =>
+                    SOUND[name] === data.MONSTER_SOUNDS[key]
+            ) || "";
+
+        field(
+            root,
+            "Monster sound",
+            "select",
+            soundName,
+
+            value => mutate(() => {
+                if (value) {
+                    data.MONSTER_SOUNDS[key] = SOUND[value];
+                } else {
+                    delete data.MONSTER_SOUNDS[key];
+                }
+            }),
+
+            soundOptions
+        );
+    }
+
+    const note = document.createElement("p");
+
+    note.className = "small";
+
+    note.textContent =
+        "friendlyStanding is assigned to individual room monsters " +
+        "in the room editor. It overrides movement and contact " +
+        "attacks; it is not an initialState value.";
+
+    root.append(note);
+}
+
+/* =========================================================
+   OBJECT EDITING
+========================================================= */
+
+function applyObject(entry) {
+    const id = Number(key);
+
+    const oldNames = Object.keys(data.OBJECT).filter(
+        name => data.OBJECT[name] === id
+    );
+
+    if (
+        !Array.isArray(entry.names) ||
+        !entry.names.length ||
+        oldNames.some(
+            name => !entry.names.includes(name)
+        )
+    ) {
+        throw Error(
+            "Keep existing object names; " +
+            "add aliases without removing old names."
+        );
+    }
+
+    for (const name of entry.names) {
+        if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) {
+            throw Error(
+                "Invalid object name."
+            );
+        }
+
+        if (
+            Object.hasOwn(data.OBJECT, name) &&
+            data.OBJECT[name] !== id
+        ) {
+            throw Error(
+                "Object name already belongs to another ID."
+            );
+        }
+    }
+
+    if (
+        !Array.isArray(entry.placementNames) ||
+        entry.placementNames.some(
+            name =>
+                typeof name !== "string" ||
+                !name.trim()
+        )
+    ) {
+        throw Error(
+            "Placement names must be nonempty strings."
+        );
+    }
+
+    for (const name of entry.placementNames) {
+        if (
+            Object.hasOwn(
+                data.PLACEMENT_OBJECT_TYPES,
+                name
+            ) &&
+            data.PLACEMENT_OBJECT_TYPES[name] !== id
+        ) {
+            throw Error(
+                "Placement name belongs to another object: " +
+                name
+            );
+        }
+    }
+
+    for (const name of entry.names) {
+        data.OBJECT[name] = id;
+    }
+
+    data.OBJECT_DEFS[id] = clone(entry.frames);
+
+    for (const name of
+        Object.keys(data.PLACEMENT_OBJECT_TYPES)
+    ) {
+        if (data.PLACEMENT_OBJECT_TYPES[name] === id) {
+            delete data.PLACEMENT_OBJECT_TYPES[name];
+        }
+    }
+
+    for (const name of entry.placementNames) {
+        data.PLACEMENT_OBJECT_TYPES[name] = id;
+    }
+}
+
+function renderObject(root) {
+    const entry = selectedEntry();
+
+    const update = (name, value) => mutate(() => {
+        applyObject({
+            ...selectedEntry(),
+            [name]: value
+        });
+    });
+
+    field(
+        root,
+        "Object names / aliases, comma separated",
+        "text",
+        entry.names.join(","),
+
+        value => update(
+            "names",
+            value.split(",")
+                .map(name => name.trim())
+                .filter(Boolean)
+        )
+    );
+
+    field(
+        root,
+        "First sprite frame",
+        "select",
+        entry.frames[0],
+
+        value => update(
+            "frames",
+            [Number(value), entry.frames[1]]
+        ),
+
+        spriteOptions()
+    );
+
+    field(
+        root,
+        "Second sprite frame",
+        "select",
+        entry.frames[1],
+
+        value => update(
+            "frames",
+            [entry.frames[0], Number(value)]
+        ),
+
+        [
+            ["-1", "Not animated"],
+            ...spriteOptions()
+        ]
+    );
+
+    field(
+        root,
+        "Placement names, comma separated",
+        "text",
+        entry.placementNames.join(","),
+
+        value => update(
+            "placementNames",
+            value.split(",")
+                .map(name => name.trim())
+                .filter(Boolean)
+        )
+    );
+
+    const note = document.createElement("p");
+
+    note.className = "small";
+
+    note.textContent =
+        "Removing a placement name is rejected if a dungeon " +
+        "still uses it. Existing object IDs and constant names " +
+        "are retained.";
+
+    root.append(note);
+}
+
+/* =========================================================
+   REFERENCES
+========================================================= */
+
+function references() {
+    if (tab === "dungeons") {
+        return (
+            "Rooms and guardians use the current " +
+            "room and placement definitions."
+        );
+    }
+
+    if (key === "default") {
+        return (
+            "Fallback settings for recognized monsters " +
+            "without a specific entry."
+        );
+    }
+
+    const id = Number(key);
+
+    const aliases = Object.entries(
+        data.PLACEMENT_OBJECT_TYPES
+    )
+        .filter(([, value]) => value === id)
+        .map(([name]) => name);
+
+    const used = [];
+
+    for (const [name, content] of
+        Object.entries(data.DUNGEON_CONTENT)
+    ) {
+        const refs = [
+            content.exit.type,
+            ...content.exit.guardians,
+
+            ...content.items.flatMap(
+                item => [
+                    item.type,
+                    item.guardian
+                ]
+            ),
+
+            content.guaranteedMonster,
+            ...content.randomMonsters
+        ];
+
+        if (aliases.some(
+            alias => refs.includes(alias)
+        )) {
+            used.push(name);
+        }
+    }
+
+    return (
+        "Placement names: " +
+        (aliases.join(", ") || "none") +
+
+        "\nDungeons: " +
+        (used.join(", ") || "none") +
+
+        "\nSpecific monster behavior: " +
+        (
+            Object.hasOwn(data.MONSTER_BEHAVIOR, id)
+                ? "yes"
+                : "no"
+        )
+    );
+}
+
+/* =========================================================
+   RENDER
+========================================================= */
+
+function render() {
+    refreshPicker();
+
+    $("listTitle").textContent =
+        tab[0].toUpperCase() + tab.slice(1);
+
+    $("heading").textContent =
+        tab === "dungeons"
+            ? key
+            : key === "default"
+                ? "Default monster behavior"
+                : objectName(key) + " · ID " + key;
+
+    document.querySelectorAll("[data-tab]").forEach(
+        button => button.classList.toggle(
+            "active",
+            button.dataset.tab === tab
+        )
+    );
+
+    $("form").replaceChildren();
+
+    if (tab === "dungeons") {
+        renderDungeon(
+            $("form"),
+            data.DUNGEON_CONTENT[key]
+        );
+    } else if (tab === "monsters") {
+        renderMonster(
+            $("form"),
+            data.MONSTER_BEHAVIOR[key]
+        );
+    } else {
+        renderObject($("form"));
+    }
+
+    $("entryJSON").value = stringify(
+        selectedEntry()
+    );
+
+    $("usage").textContent = references();
+
+    $("addHelp").textContent =
+        tab === "monsters"
+            ? (
+                "Add behavior for an existing OBJECT ID below. " +
+                "Create a new object in Objects first. " +
+                "New hostile types also need recognition " +
+                "in isMonsterObject()."
+            )
+            : tab === "objects"
+                ? (
+                    "New objects append an ID; " +
+                    "existing IDs never move."
+                )
+                : (
+                    "A new dungeon copies the selected dungeon " +
+                    "as its starting configuration."
+                );
+
+    $("newName").disabled = tab === "monsters";
+
+    $("add").textContent =
+        tab === "monsters"
+            ? "Add behavior for object ID"
+            : "Add definition";
+
+    if (tab === "monsters") {
+        field(
+            $("form"),
+            "Object ID to add behavior for",
+            "select",
+            objectOptions()[0]?.[0] || "",
+            () => {},
+            objectOptions()
+        ).id = "addMonsterID";
+    }
+
+    $("undo").disabled = !undo.length;
+    $("redo").disabled = !redo.length;
+
+    drawPreview(0);
+}
+
+/* =========================================================
+   ARTWORK PREVIEW
+========================================================= */
+
+function drawPreview(frame) {
+    const canvas = $("preview");
+    const context = canvas.getContext("2d");
+
+    context.clearRect(0, 0, 16, 16);
+
+    const objectID =
+        tab === "dungeons"
+            ? data.PLACEMENT_OBJECT_TYPES[
+                data.DUNGEON_CONTENT[key].exit.type
+            ]
+            : key === "default"
+                ? null
+                : Number(key);
+
+    const pair =
+        objectID === null
+            ? null
+            : data.OBJECT_DEFS[objectID];
+
+    const spriteID = pair
+        ? (
+            frame % 2 && pair[1] !== -1
+                ? pair[1]
+                : pair[0]
+        )
+        : null;
+
+    const pixels =
+        spriteID === null
+            ? null
+            : SPRITES[spriteID];
+
+    if (pixels) {
+        pixels.forEach((number, index) => {
+            const color = SPRITE_COLORS[number];
+
+            if (color) {
+                context.fillStyle = color;
+
+                context.fillRect(
+                    index % 16,
+                    Math.floor(index / 16),
+                    1,
+                    1
+                );
+            }
+        });
+    }
+
+    $("previewLabel").textContent = pair
+        ? objectName(objectID) + " · sprite " + spriteID
+        : "No artwork for default settings.";
+}
+
+/* =========================================================
+   SELECTION EVENTS
+========================================================= */
+
+$("picker").onchange = () => {
+    key = $("picker").value;
+    render();
+};
+
+$("search").oninput = refreshPicker;
+
+document.querySelectorAll("[data-tab]").forEach(button => {
+    button.onclick = () => {
+        tab = button.dataset.tab;
+        key = "";
+
+        $("search").value = "";
+
+        render();
+    };
+});
+
+/* =========================================================
+   APPLY SELECTED JSON
+========================================================= */
+
+$("applyEntry").onclick = () => safe(() => {
+    const next = parse(
+        $("entryJSON").value
+    );
+
+    mutate(() => {
+        if (tab === "dungeons") {
+            data.DUNGEON_CONTENT[key] = next;
+        } else if (tab === "monsters") {
+            data.MONSTER_BEHAVIOR[key] = next;
+        } else {
+            applyObject(next);
+        }
+    });
+});
+
+/* =========================================================
+   ADD DEFINITIONS
+========================================================= */
+
+$("add").onclick = () => safe(() => {
+    if (tab === "monsters") {
+        const id = $("addMonsterID").value;
+
+        if (Object.hasOwn(data.MONSTER_BEHAVIOR, id)) {
+            throw Error(
+                "That object already has behavior settings."
+            );
+        }
+
+        mutate(() => {
+            data.MONSTER_BEHAVIOR[id] =
+                clone(data.MONSTER_BEHAVIOR.default);
+        });
+
+        key = id;
+
+        render();
+        return;
+    }
+
+    const name = $("newName").value.trim();
+
+    if (tab === "dungeons") {
+        if (
+            !/^[a-z][a-z0-9_]*$/.test(name) ||
+            Object.hasOwn(data.DUNGEON_CONTENT, name)
+        ) {
+            throw Error(
+                "Choose a new lowercase dungeon key."
+            );
+        }
+
+        const original = clone(
+            data.DUNGEON_CONTENT[key]
+        );
+
+        mutate(() => {
+            data.DUNGEON_CONTENT[name] = original;
+        });
+
+        key = name;
+    } else {
+        if (
+            !/^[A-Z_][A-Z0-9_]*$/.test(name) ||
+            Object.hasOwn(data.OBJECT, name)
+        ) {
+            throw Error(
+                "Choose a new uppercase object name."
+            );
+        }
+
+        const id = data.OBJECT_DEFS.length;
+
+        mutate(() => {
+            data.OBJECT[name] = id;
+            data.OBJECT_DEFS.push([0, -1]);
+        });
+
+        key = String(id);
+    }
+
+    $("newName").value = "";
+    $("search").value = "";
+
+    render();
+});
+
+/* =========================================================
+   JAVASCRIPT EXPORT
+========================================================= */
+
+function declarations(which = "all") {
+    validate(data);
+
+    const keys =
+        which === "dungeons"
+            ? ["DUNGEON_CONTENT"]
+            : which === "monsters"
+                ? [
+                    "MONSTER_BEHAVIOR",
+                    "MONSTER_SOUNDS"
+                ]
+                : which === "objects"
+                    ? [
+                        "OBJECT",
+                        "OBJECT_DEFS",
+                        "PLACEMENT_OBJECT_TYPES"
+                    ]
+                    : [
+                        "DUNGEON_CONTENT",
+                        "OBJECT",
+                        "OBJECT_DEFS",
+                        "PLACEMENT_OBJECT_TYPES",
+                        "MONSTER_SOUNDS",
+                        "MONSTER_BEHAVIOR"
+                    ];
+
+    return (
+        "// Replace matching declarations in their existing source files.\n" +
+        "// Keep all other definitions and functions.\n\n" +
+
+        keys.map(name =>
+            "const " +
+            name +
+            " = " +
+            js(data[name]) +
+            ";"
+        ).join("\n\n") +
+
+        "\n"
+    );
+}
+
+$("showTab").onclick = () => safe(() => {
+    $("output").value = declarations(tab);
+});
+
+$("showAll").onclick = () => safe(() => {
+    $("output").value = declarations();
+});
+
+/* =========================================================
+   JSON IMPORT / EXPORT
+========================================================= */
+
+$("showJSON").onclick = () => {
+    $("output").value = stringify(data);
+};
+
+$("importJSON").onclick = () => safe(() => {
+    const next = parse(
+        $("output").value
+    );
+
+    validate(next);
+
+    mutate(() => {
+        data = clone(next);
+    });
+});
+
+/* =========================================================
+   COPY / DOWNLOAD
+========================================================= */
+
+$("copy").onclick = async () => {
+    try {
+        await navigator.clipboard.writeText(
+            $("output").value
+        );
+
+        status("Copied.");
+    } catch {
+        $("output").focus();
+        $("output").select();
+
+        status(
+            "Output selected. Press Command+C or Ctrl+C."
+        );
+    }
+};
+
+$("download").onclick = () => safe(() => {
+    const text = declarations();
+
+    const url = URL.createObjectURL(
+        new Blob(
+            [text],
+            { type: "text/javascript" }
+        )
+    );
+
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = "content_declarations.js";
+    link.click();
+
+    setTimeout(
+        () => URL.revokeObjectURL(url),
+        1000
+    );
+});
+
+/* =========================================================
+   BROWSER DRAFTS
+========================================================= */
+
+$("saveDraft").onclick = () => safe(() => {
+    localStorage.setItem(
+        draftKey,
+        stringify(data)
+    );
+
+    status("Browser draft saved.");
+});
+
+$("loadDraft").onclick = () => safe(() => {
+    const raw = localStorage.getItem(
+        draftKey
+    );
+
+    if (!raw) {
+        throw Error(
+            "No saved draft."
+        );
+    }
+
+    const next = parse(raw);
+
+    validate(next);
+
+    mutate(() => {
+        data = next;
+    });
+
+    status("Browser draft loaded.");
+});
+
+/* =========================================================
+   UNDO / REDO
+========================================================= */
+
+$("undo").onclick = () => {
+    if (undo.length) {
+        redo.push(clone(data));
+        data = undo.pop();
+        render();
+    }
+};
+
+$("redo").onclick = () => {
+    if (redo.length) {
+        undo.push(clone(data));
+        data = redo.pop();
+        render();
+    }
+};
+
+/* =========================================================
+   PREVIEW LOOP
+========================================================= */
+
+let last = 0;
+let frame = 0;
+
+function tick(now) {
+    if (now - last >= 250) {
+        last = now;
+        drawPreview(frame++);
+    }
+
+    requestAnimationFrame(tick);
+}
+
+/* =========================================================
+   START
+========================================================= */
+
+safe(() => {
+    validate(data);
+    render();
+
+    status(
+        "Loaded " +
+        Object.keys(data.DUNGEON_CONTENT).length +
+        " dungeon types, " +
+
+        (Object.keys(data.MONSTER_BEHAVIOR).length - 1) +
+        " monster types plus default settings, and " +
+
+        data.OBJECT_DEFS.length +
+        " objects."
+    );
+
+    requestAnimationFrame(tick);
+});
+
+})();
+</script>
+
+</body>
+</html>

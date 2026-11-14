@@ -1,6 +1,8 @@
 
 "use strict";
 
+const TEST_ROOM_PLACEMENT = false;
+
 /* =========================================================
    DUNGEON GENERATOR
 
@@ -49,30 +51,102 @@
            Rendering functions
 ========================================================= */
 
+function generateDungeonRooms(width, height, seed, content = {}) {
 
-/* =========================================================
-   GENERATE DUNGEON ROOMS
-
-   Creates a rectangular grid of randomly selected room
-   shapes and orientations.
-
-   Uses seeded backtracking to find a valid arrangement.
-
-   Returns:
-       grid[y][x]
-
-   Throws an error if no valid arrangement is found.
-========================================================= */
-
-function generateDungeonRooms(width, height, seed) {
+    /* -----------------------------------------------------
+       VALIDATE DIMENSIONS AND ROOM SELECTION
+    ----------------------------------------------------- */
 
     width = Math.floor(width);
     height = Math.floor(height);
 
-    if (!Number.isFinite(width) ||
-        !Number.isFinite(height) ||
-        width < 1 || height < 1) {
+    if (
+        !Number.isSafeInteger(width) ||
+        !Number.isSafeInteger(height) ||
+        width < 1 ||
+        height < 1 ||
+        !Number.isSafeInteger(width * height)
+    ) {
         throw new Error("Invalid dungeon dimensions");
+    }
+
+    const totalRooms = width * height;
+
+    const roomIDs = content.rooms ?? [0, 1, 2, 3, 4, 5, 6, 7];
+    const specialRules = content.specialRooms ?? [];
+
+    function validateRoomIDs(ids, label) {
+        if (
+            !Array.isArray(ids) ||
+            ids.length === 0 ||
+            ids.some(id =>
+                !Number.isInteger(id) ||
+                id < 0 ||
+                id > 15
+            )
+        ) {
+            throw new Error(
+                label + " must contain room IDs from 0 through 15"
+            );
+        }
+    }
+
+    validateRoomIDs(roomIDs, "rooms");
+
+    if (!Array.isArray(specialRules)) {
+        throw new Error("specialRooms must be an array");
+    }
+
+    let specialCount = 0;
+
+    for (const rule of specialRules) {
+
+        if (!rule) {
+            throw new Error("Invalid special room rule");
+        }
+
+        validateRoomIDs(rule.choices, "special room choices");
+
+        if (
+            !Number.isSafeInteger(rule.count) ||
+            rule.count < 0
+        ) {
+            throw new Error(
+                "Special room count must be nonnegative"
+            );
+        }
+
+        if (rule.count > totalRooms - specialCount) {
+            throw new Error(
+                "Not enough dungeon positions for required special rooms"
+            );
+        }
+
+        specialCount += rule.count;
+    }
+
+    /* -----------------------------------------------------
+       CHECK ORDINARY ROOM CAPACITY
+
+       Each placement uses a separate ordinary room:
+           Player
+           Exit and its guardian
+           Each required item and its guardian
+           Two additional monsters
+    ----------------------------------------------------- */
+
+    const requiredOrdinaryRooms =
+        1 +
+        1 +
+        (content.items?.length ?? 0) +
+        2;
+
+    if (totalRooms - specialCount < requiredOrdinaryRooms) {
+        throw new Error(
+            "Dungeon needs at least " +
+            requiredOrdinaryRooms +
+            " ordinary rooms for player, exit, items, and monsters"
+        );
     }
 
     const DX = [0, 1, 0, -1];
@@ -114,6 +188,12 @@ function generateDungeonRooms(width, height, seed) {
 
     /* -----------------------------------------------------
        ORIENTATION GRID
+
+       Solver values identify the blocked direction:
+           0 = NORTH
+           1 = EAST
+           2 = SOUTH
+           3 = WEST
     ----------------------------------------------------- */
 
     const orientations = Array.from(
@@ -123,10 +203,6 @@ function generateDungeonRooms(width, height, seed) {
 
     /* -----------------------------------------------------
        CHECK ORIENTATION AGAINST ASSIGNED NEIGHBORS
-
-       A shared boundary must be either:
-           Door / Door
-           Wall / Wall
     ----------------------------------------------------- */
 
     function validOrientation(x, y, dir) {
@@ -158,7 +234,7 @@ function generateDungeonRooms(width, height, seed) {
     /* -----------------------------------------------------
        CHECK THAT ALL ROOMS ARE REACHABLE
 
-       Breadth-first traversal through matching doors.
+       Checks room connections, not internal trap states.
     ----------------------------------------------------- */
 
     function isConnected() {
@@ -186,33 +262,35 @@ function generateDungeonRooms(width, height, seed) {
                 const nx = x + DX[d];
                 const ny = y + DY[d];
 
-                if (!inside(nx, ny) ||
-                    visited[ny][nx])
+                if (
+                    !inside(nx, ny) ||
+                    visited[ny][nx]
+                ) {
                     continue;
+                }
 
-                if (orientations[ny][nx] ===
-                    ((d + 2) % 4))
+                if (
+                    orientations[ny][nx] ===
+                    ((d + 2) % 4)
+                ) {
                     continue;
+                }
 
                 visited[ny][nx] = true;
                 queue.push([nx, ny]);
             }
         }
 
-        return count === width * height;
+        return count === totalRooms;
     }
 
     /* -----------------------------------------------------
        RECURSIVE BACKTRACKING SOLVER
-
-       Assigns orientations one room at a time.
-
-       Only accepts complete layouts that are connected.
     ----------------------------------------------------- */
 
     function solve(index) {
 
-        if (index === width * height)
+        if (index === totalRooms)
             return isConnected();
 
         const x = index % width;
@@ -236,10 +314,6 @@ function generateDungeonRooms(width, height, seed) {
         return false;
     }
 
-    /* -----------------------------------------------------
-       GENERATE VALID ORIENTATIONS
-    ----------------------------------------------------- */
-
     if (!solve(0)) {
         throw new Error(
             "No valid connected dungeon layout found"
@@ -247,59 +321,135 @@ function generateDungeonRooms(width, height, seed) {
     }
 
     /* -----------------------------------------------------
-       ASSIGN ROOM SHAPES
+       ASSIGN ORDINARY ROOM TEMPLATES
 
-       Room IDs 0 through 7 are selected randomly.
-
-       Solver blocked directions are converted to
-       clockwise room rotations for storage.
+       Convert blocked directions to clockwise rotations.
+       Templates must have WEST blocked before rotation.
     ----------------------------------------------------- */
-    return orientations.map(row =>
+
+    const grid = orientations.map(row =>
         row.map(orientation => ({
-            room: Math.floor(random() * 8),
+            room: roomIDs[
+                Math.floor(random() * roomIDs.length)
+            ],
             orientation: (orientation + 1) % 4
         }))
     );
-}
 
+    /* -----------------------------------------------------
+       PLACE REQUIRED SPECIAL ROOMS
+
+       Reserve distinct ordinary positions on the left
+       and right edges for player and exit placement.
+
+       Preserve solver-assigned orientations.
+    ----------------------------------------------------- */
+
+    if (specialCount > 0) {
+
+        const leftPositions = Array.from(
+            { length: height },
+            (_, y) => y * width
+        );
+
+		const playerPosition = TEST_ROOM_PLACEMENT
+			? (height - 1) * width
+			: leftPositions[
+				Math.floor(random() * leftPositions.length)
+			];
+
+        const rightPositions = Array.from(
+            { length: height },
+            (_, y) => y * width + width - 1
+        ).filter(index => index !== playerPosition);
+
+        if (!rightPositions.length) {
+            throw new Error(
+                "Dungeon needs distinct ordinary rooms " +
+                "for the player and exit"
+            );
+        }
+
+        const exitPosition = rightPositions[
+            Math.floor(random() * rightPositions.length)
+        ];
+
+		const positions = TEST_ROOM_PLACEMENT
+			? leftPositions.filter(index =>
+				index !== playerPosition &&
+				index !== exitPosition
+			)
+			: shuffle(
+				Array.from(
+					{ length: totalRooms },
+					(_, index) => index
+				).filter(index =>
+					index !== playerPosition &&
+					index !== exitPosition
+				)
+			);
+		
+		if (positions.length < specialCount) {
+			throw new Error(
+				"Not enough left-edge rooms for test placement."
+			);
+		}
+
+        let nextPosition = 0;
+
+        for (const rule of specialRules) {
+            for (let i = 0; i < rule.count; i++) {
+
+                const index = positions[nextPosition++];
+                const x = index % width;
+                const y = Math.floor(index / width);
+
+                grid[y][x].room = rule.choices[
+                    Math.floor(random() * rule.choices.length)
+                ];
+
+                grid[y][x].special = true;
+            }
+        }
+    }
+
+    return grid;
+}
 
 /* =========================================================
    VALIDATE DUNGEON
 
    Checks:
        1. Rectangular, nonempty grid
-       2. Valid room IDs (0..7)
-       3. Valid orientations (0..3)
+       2. Valid room IDs (0..15)
+       3. Valid clockwise orientations (0..3)
        4. Matching interior boundaries
        5. Room connectivity
 
-   Assumes each room shape has one intrinsic blocked side.
+   Assumes every template has WEST blocked before rotation.
 
-   Currently interprets orientation as the blocked
-   direction, rather than the stored room rotation.
-
-   Returns:
-       {
-           valid,
-           invalidRooms,
-           mismatches,
-           connected,
-           reachableRooms,
-           totalRooms
-       }
+   Checks room connections, not internal trap states.
 ========================================================= */
 
 function validateDungeon(grid) {
 
-    if (!Array.isArray(grid) ||
+    if (
+        !Array.isArray(grid) ||
         grid.length === 0 ||
         !Array.isArray(grid[0]) ||
-        grid[0].length === 0) {
+        grid[0].length === 0
+    ) {
         throw new Error("Invalid dungeon grid");
     }
 
     const height = grid.length;
     const width = grid[0].length;
+
+    for (const row of grid) {
+        if (!Array.isArray(row) || row.length !== width) {
+            throw new Error("Non-rectangular dungeon grid");
+        }
+    }
 
     const DX = [0, 1, 0, -1];
     const DY = [-1, 0, 1, 0];
@@ -314,35 +464,47 @@ function validateDungeon(grid) {
                y < height;
     }
 
+    function isValidRoom(room) {
+        return room !== null &&
+               typeof room === "object" &&
+               Number.isInteger(room.room) &&
+               room.room >= 0 &&
+               room.room <= 15 &&
+               Number.isInteger(room.orientation) &&
+               room.orientation >= 0 &&
+               room.orientation <= 3;
+    }
+
+    function blockedDirection(room) {
+        return (room.orientation + 3) % 4;
+    }
+
     /* -----------------------------------------------------
-       VALIDATE ROOM DATA AND INTERIOR BOUNDARIES
+       VALIDATE ROOM RECORDS
     ----------------------------------------------------- */
 
     for (let y = 0; y < height; y++) {
-
-        if (!Array.isArray(grid[y]) ||
-            grid[y].length !== width) {
-            throw new Error("Non-rectangular dungeon grid");
+        for (let x = 0; x < width; x++) {
+            if (!isValidRoom(grid[y][x])) {
+                invalidRooms.push({ x, y });
+            }
         }
+    }
 
+    /* -----------------------------------------------------
+       CHECK INTERIOR BOUNDARIES
+
+       Inspect EAST and SOUTH so each shared boundary
+       is counted once. Invalid records are reported above.
+    ----------------------------------------------------- */
+
+    for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
 
             const room = grid[y][x];
 
-            if (!room ||
-                !Number.isInteger(room.room) ||
-                room.room < 0 ||
-                room.room > 7 ||
-                !Number.isInteger(room.orientation) ||
-                room.orientation < 0 ||
-                room.orientation > 3) {
-
-                invalidRooms.push({ x, y });
+            if (!isValidRoom(room))
                 continue;
-            }
-
-            // Only inspect EAST and SOUTH to count
-            // each shared boundary exactly once.
 
             for (const d of [1, 2]) {
 
@@ -354,19 +516,14 @@ function validateDungeon(grid) {
 
                 const other = grid[ny][nx];
 
-                if (!other ||
-                    !Number.isInteger(other.orientation) ||
-                    other.orientation < 0 ||
-                    other.orientation > 3) {
-                    mismatches++;
+                if (!isValidRoom(other))
                     continue;
-                }
 
                 const blockedHere =
-                    room.orientation === d;
+                    blockedDirection(room) === d;
 
                 const blockedThere =
-                    other.orientation === ((d + 2) % 4);
+                    blockedDirection(other) === ((d + 2) % 4);
 
                 if (blockedHere !== blockedThere)
                     mismatches++;
@@ -376,6 +533,9 @@ function validateDungeon(grid) {
 
     /* -----------------------------------------------------
        CHECK CONNECTIVITY
+
+       Only valid rooms connected by matching open doors
+       can be visited.
     ----------------------------------------------------- */
 
     const visited = Array.from(
@@ -383,44 +543,41 @@ function validateDungeon(grid) {
         () => Array(width).fill(false)
     );
 
-    const queue = [[0, 0]];
-    visited[0][0] = true;
+    const queue = [];
+
+    if (isValidRoom(grid[0][0])) {
+        queue.push([0, 0]);
+        visited[0][0] = true;
+    }
 
     let reachableRooms = 0;
 
     for (let i = 0; i < queue.length; i++) {
 
         const [x, y] = queue[i];
-        reachableRooms++;
-
         const room = grid[y][x];
 
-        if (!room ||
-            !Number.isInteger(room.orientation) ||
-            room.orientation < 0 ||
-            room.orientation > 3)
-            continue;
+        reachableRooms++;
 
         for (let d = 0; d < 4; d++) {
 
-            if (room.orientation === d)
+            if (blockedDirection(room) === d)
                 continue;
 
             const nx = x + DX[d];
             const ny = y + DY[d];
 
-            if (!inside(nx, ny) ||
-                visited[ny][nx])
+            if (!inside(nx, ny) || visited[ny][nx])
                 continue;
 
             const other = grid[ny][nx];
 
-            if (!other ||
-                !Number.isInteger(other.orientation) ||
-                other.orientation < 0 ||
-                other.orientation > 3 ||
-                other.orientation === ((d + 2) % 4))
+            if (
+                !isValidRoom(other) ||
+                blockedDirection(other) === ((d + 2) % 4)
+            ) {
                 continue;
+            }
 
             visited[ny][nx] = true;
             queue.push([nx, ny]);
@@ -456,6 +613,8 @@ function validateDungeon(grid) {
 
 function regenerateDungeon(seed, color) {
 
+    RoomExtensions.clearRoomExtensions();
+
     // -------------------------------------
     // UPDATE DUNGEON SEED
     // -------------------------------------
@@ -466,11 +625,12 @@ function regenerateDungeon(seed, color) {
     // GENERATE DUNGEON ROOMS
     // -------------------------------------
 
-    DUNGEON_ROOMS = generateDungeonRooms(
-        DUNGEON_W,
-        DUNGEON_H,
-        DUNGEON_SEED
-    );
+	DUNGEON_ROOMS = generateDungeonRooms(
+		DUNGEON_W,
+		DUNGEON_H,
+		DUNGEON_SEED,
+		DUNGEON_CONTENT[String(color).toLowerCase()]
+	);
 
     // -------------------------------------
     // BUILD DUNGEON MAP
@@ -491,7 +651,8 @@ function regenerateDungeon(seed, color) {
         color,
         ROOM_BLOCKS,
         ROOM_BLOCKS,
-        DUNGEON_SEED
+        DUNGEON_SEED,
+        player.inventory
     );
 
     // -------------------------------------
@@ -534,6 +695,31 @@ function regenerateDungeon(seed, color) {
     // -------------------------------------
 
     centerCameraOn(player.x, player.y);
+
+    // -------------------------------------
+    // INITIALIZE SPECIAL ROOM EXTENSIONS
+    // -------------------------------------
+
+    for (let roomY = 0; roomY < DUNGEON_ROOMS.length; roomY++) {
+        for (
+            let roomX = 0;
+            roomX < DUNGEON_ROOMS[roomY].length;
+            roomX++
+        ) {
+            const room = DUNGEON_ROOMS[roomY][roomX];
+            const extension = ROOM_EXTENSIONS[room.room];
+
+            if (!extension)
+                continue;
+
+            RoomExtensions.initializeRoomExtensions(
+                room,
+                extension,
+                roomX * ROOM_BLOCKS,
+                roomY * ROOM_BLOCKS
+            );
+        }
+    }
 
 	// Initialize monster behavior and dungeon visibility.
     initializeMonsterBehavior();

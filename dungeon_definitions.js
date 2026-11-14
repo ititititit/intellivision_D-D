@@ -11,49 +11,159 @@
 
 "use strict";
 
-// -------------------------------------
-// DUNGEON LOCATIONS
-//
-// x, y, palette
-// -------------------------------------
+/* =========================================================
+   DUNGEON CONTENT DEFINITIONS
 
-const MOUNTAIN_PALETTES = {
+   Defines:
+       Exit object and eligible exit guardians
+       Required items and their guardians
+       Guaranteed first additional monster
+       Eligible random monsters
 
-    RED: {
-        4: "#a03030",
-        8: "#ff7070"
+   A null guaranteedMonster means both additional
+   monsters are selected randomly.
+========================================================= */
+
+const DUNGEON_CONTENT = {
+
+    blue: {
+    	rooms: [0, 1, 2, 3, 4, 5, 6, 7],
+    
+        exit: {
+            type: "ladder",
+            color: "green",
+            guardians: ["demon", "dragon"]
+        },
+        items: [
+            { type: "boat", guardian: "demon" }
+        ],
+        guaranteedMonster: "demon",
+        randomMonsters: [
+            "dragon", "demon", "bat", "spider", "blob"
+        ]
     },
 
-    BLUE: {
-        4: "#3050a0",
-        8: "#70b0ff"
+    red: {
+    	rooms: [0, 1, 2, 3, 4, 5, 6, 7],
+    	
+        exit: {
+            type: "ladder",
+            color: "green",
+            guardians: ["snake", "rat"]
+        },
+        items: [
+            { type: "axe", guardian: "snake" }
+        ],
+        guaranteedMonster: "rat",
+        randomMonsters: [
+            "snake", "rat", "bat", "spider", "blob"
+        ]
     },
 
-    GREEN: {
-        4: "#307040",
-        8: "#80d080"
+    purple: {
+        rooms: [0, 1, 2, 3, 4, 5, 6, 7],
+    
+        exit: {
+            type: "ladder",
+            color: "green",
+            guardians: ["dragon", "demon"]
+        },
+        items: [
+            { type: "key", guardian: "dragon" }
+        ],
+        guaranteedMonster: "demon",
+        randomMonsters: [
+            "dragon", "demon", "bat", "spider", "blob"
+        ]
     },
 
-    YELLOW: {
-        4: "#b09020",
-        8: "#ffe070"
+    white: {
+        rooms: [0, 1, 2, 3, 4, 5, 6, 7],
+        	
+        exit: {
+            type: "throne",
+            color: null,
+            guardians: ["wingedDragon"]
+        },
+        items: [
+            { type: "crownLeft", guardian: "wingedDragon" },
+            { type: "crownRight", guardian: "wingedDragon" }
+        ],
+        guaranteedMonster: null,
+        randomMonsters: [
+            "snake", "bat", "spider", "blob"
+        ]
+    },
+    
+    trap: {
+        rooms: [0, 1, 2, 3, 4, 5, 6, 7],
+
+        specialRooms: [
+            { choices: [14], count: 1 }, // Jeff's Honest Door
+            { choices: [11], count: 1 }, // The Breathing Path
+            { choices: [12], count: 1 }  // The Ricochet Vault
+        ],
+
+        exit: {
+            type: "ladder",
+            color: "green",
+            guardians: ["snake", "rat"]
+        },
+
+        items: [],
+
+        guaranteedMonster: "snake",
+
+        randomMonsters: [
+            "snake", "rat", "bat", "spider"
+        ]
     },
 
-    PURPLE: {
-        4: "#703090",
-        8: "#c080ff"
+    water: {
+        rooms: [0, 1, 2, 3, 4, 5, 6, 7],
+
+        specialRooms: [
+            { choices: [15], count: 1 }, // Calvin's Island
+            { choices: [10], count: 1 }, // Island Shrine
+            { choices: [9], count: 1 }   // The Hidden Compass
+        ],
+
+        exit: {
+            type: "ladder",
+            color: "green",
+            guardians: ["crab"]
+        },
+
+        items: [],
+
+        guaranteedMonster: "crab",
+
+        randomMonsters: [
+            "crab", "snake", "bat", "blob"
+        ]
     },
 
-    GRAY: {
-        4: "#606060",
-        8: "#b0b0b0"
-    },
+    armor: {
+        rooms: [0, 1, 2, 3, 4, 5, 6, 7],
 
-    WHITE: {
-        4: "#b0c0d0",
-        8: "#ffffff"
+        specialRooms: [
+            { choices: [8], count: 1 } // James's Armory
+        ],
+
+        exit: {
+            type: "ladder",
+            color: "green",
+            guardians: ["medusa"]
+        },
+
+        items: [],
+
+        guaranteedMonster: "demon",
+
+        randomMonsters: [
+            "demon", "dragon", "bat", "bear"
+        ]
     }
-
 };
 
 const OVERWORLD_DUNGEONS = [
@@ -73,1201 +183,6 @@ const N = 0;
 const E = 1;
 const S = 2;
 const W = 3;
-
-
-/* =========================================================
-   2. BLOCK COLORS
-========================================================= */
-
-const COLORS = [
-    "#3f7d4a",     // 0 wall
-    "#b99a68"      // 1 floor
-];
-
-
-/* =========================================================
-   3. BLOCK DEFINITIONS
-
-   Each block is an 8x8 array of COLOR numbers.
-
-   BLOCK 0 = solid wall
-   BLOCK 1 = solid floor
-   BLOCK 2 = diagonal wall/floor
-========================================================= */
-
-const BLOCKS = [
-
-/* BLOCK 0 - SOLID WALL */
-[
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* BLOCK 1 - SOLID FLOOR */
-[
-    1,1,1,1,1,1,1,1,
-    1,1,1,1,1,1,1,1,
-    1,1,1,1,1,1,1,1,
-    1,1,1,1,1,1,1,1,
-    1,1,1,1,1,1,1,1,
-    1,1,1,1,1,1,1,1,
-    1,1,1,1,1,1,1,1,
-    1,1,1,1,1,1,1,1
-],
-
-/* BLOCK 2 - DIAGONAL */
-[
-    0,0,0,0,0,0,0,1,
-    0,0,0,0,0,0,1,1,
-    0,0,0,0,0,1,1,1,
-    0,0,0,0,1,1,1,1,
-    0,0,0,1,1,1,1,1,
-    0,0,1,1,1,1,1,1,
-    0,1,1,1,1,1,1,1,
-    1,1,1,1,1,1,1,1
-]
-
-];
-
-
-/* =========================================================
-   4. SPRITE COLORS
-========================================================= */
-
-const SPRITE_COLORS = [
-    null,       // 0 transparent
-    "#d8d0a0",  // 1 bone / light
-    "#6b4423",  // 2 brown
-    "#d8b030",  // 3 gold
-    "#b8b8b8",  // 4 steel / mountains
-    "#202020",  // 5 black
-    "#26352b",  // 6 wall barrier
-    "#245b2a",  // 7 dark forest green
-    "#ed641c",  // 8 Cloudy Mountain orange
-    "#704090",  // 9 purple
-    "#d06030",  // 10 orange
-    "#83b86a",  // 11 light grass
-    "#a0c784",  // 12 grass highlight
-    "#ffffff",  // 13 Cloudy Mountain white
-    "#408ac0",  // 14 lighter water blue
-    "#a0d8e8"   // 15 water highlights
-];
-
-/* =========================================================
-   5. SPRITE IDS
-========================================================= */
-
-const SPRITE = {
-    LADDER: 0,
-    BOW: 1,
-    QUIVER: 2,
-    SWORD: 3,
-    KEY: 4,
-    CROWN: 5,
-    BOAT: 6,
-
-    SNAKE_1: 7,
-    SNAKE_2: 8,
-
-    DEMON_1: 9,
-    DEMON_2: 10,
-
-    BAT_1: 11,
-    BAT_2: 12,
-
-    DRAGON_1: 13,
-    DRAGON_2: 14,
-
-    SKULL_1: 15,
-    SKULL_2: 16,
-    SKULL_HORNS: 17,
-    BONES: 18,
-
-    CABIN: 19,
-
-    MOUNTAIN_1: 20,
-    MOUNTAIN_2: 21,
-
-    RIVER_1: 22,
-    RIVER_2: 23,
-
-    AXE: 24,
-    FOREST: 25,
-
-    PLAYER_1: 26,
-    PLAYER_2: 27,
-
-    PLAYER_BOW_1: 28,
-    PLAYER_BOW_2: 29,
-
-    PLAYER_SWORD_1: 30,
-    PLAYER_SWORD_2: 31,
-
-    RAT_1: 32,
-    RAT_2: 33,
-
-    SPIDER_1: 34,
-    SPIDER_2: 35,
-
-    BLOB_1: 36,
-    BLOB_2: 37,
-
-    WINGED_DRAGON_1: 38,
-    WINGED_DRAGON_2: 39,
-
-    ARROW: 40,
-    RAT_TRACKS: 41,
-    DEMON_TRACKS: 42,
-
-    FIRE_ARROW_SPRITE: 43,
-    GRASS: 44,
-    WALL: 45,
-
-    CABIN_1: 46,
-    CABIN_2: 47,
-
-    RIVER_3: 48,
-    RIVER_4: 49,
-
-    // Added overworld sprites.
-    CLOUDY_PEAK_1: 50,
-    CLOUDY_LOWER_LEFT: 51,
-    CLOUDY_LOWER_RIGHT: 52,
-    CLOUDY_PEAK_2: 53,
-    CLOUDY_PEAK_3: 54,
-
-    WALL_HORIZONTAL: 55,
-    WALL_VERTICAL: 56,
-
-    FOREST_2: 57,
-    CLOUDY_UPPER_LEFT: 58,
-    WALL_HORIZONTAL_DOOR: 59,
-    WALL_VERTICAL_DOOR: 60,
-    THRONE: 61,
-            
-    // Alias for the existing forest sprite.
-    FOREST_1: 25
-};
-
-/* =========================================================
-   6. SPRITE PIXEL DEFINITIONS
-
-   Each sprite is an 8x8 array.
-   0 = transparent.
-========================================================= */
-
-const SPRITES = [
-
-/* 0 LADDER */
-[
-    0,2,0,0,0,0,2,0,
-    0,2,0,0,0,0,2,0,
-    0,2,2,2,2,2,2,0,
-    0,2,0,0,0,0,2,0,
-    0,2,2,2,2,2,2,0,
-    0,2,0,0,0,0,2,0,
-    0,2,2,2,2,2,2,0,
-    0,2,0,0,0,0,2,0
-],
-
-/* 1 BOW */
-[
-    0,0,2,2,0,0,0,0,
-    0,2,0,0,2,0,0,0,
-    2,0,0,0,0,2,0,0,
-    2,0,0,0,0,0,2,0,
-    2,0,0,0,0,2,0,0,
-    0,2,0,0,2,0,0,0,
-    0,0,2,2,0,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 2 QUIVER */
-[
-    0,1,0,1,0,1,0,0,
-    0,1,1,1,1,1,0,0,
-    0,0,1,0,1,0,0,0,
-    0,2,2,2,2,2,0,0,
-    0,2,3,3,3,2,0,0,
-    0,0,2,3,3,2,0,0,
-    0,0,2,3,3,2,0,0,
-    0,0,0,2,2,0,0,0
-],
-
-/* 3 SWORD */
-[
-    0,0,0,0,4,0,0,0,
-    0,0,0,4,4,0,0,0,
-    0,0,4,4,0,0,0,0,
-    0,4,4,0,0,0,0,0,
-    4,4,0,0,0,0,0,0,
-    0,3,3,0,0,0,0,0,
-    0,0,2,0,0,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 4 KEY */
-[
-    0,0,0,0,0,0,0,0,
-    0,3,3,0,0,0,0,0,
-    3,0,0,3,0,0,0,0,
-    3,0,0,3,3,3,3,3,
-    0,3,3,0,0,3,0,3,
-    0,0,0,0,0,3,0,3,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 5 CROWN */
-[
-    0,0,0,0,0,0,0,0,
-    0,3,0,3,0,3,0,0,
-    0,3,3,3,3,3,0,0,
-    0,3,3,3,3,3,0,0,
-    0,3,3,3,3,3,0,0,
-    0,0,3,3,3,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 6 BOAT */
-[
-    0,0,0,2,0,0,0,0,
-    0,0,0,2,8,0,0,0,
-    0,0,0,2,8,8,0,0,
-    0,0,0,2,8,8,8,0,
-    0,0,0,2,0,0,0,0,
-    0,2,2,2,2,2,2,0,
-    0,0,2,2,2,2,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 7 GIANT SNAKE FRAME 1 */
-[
-    0,0,0,0,7,7,0,0,
-    0,0,0,7,5,7,0,0,
-    0,0,0,7,7,0,0,0,
-    0,0,7,7,0,0,0,0,
-    0,7,7,0,0,7,7,0,
-    7,7,0,0,7,7,0,0,
-    0,7,7,7,7,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 8 GIANT SNAKE FRAME 2 */
-[
-    0,0,7,7,0,0,0,0,
-    0,0,7,5,7,0,0,0,
-    0,0,0,7,7,0,0,0,
-    0,0,0,0,7,7,0,0,
-    0,7,7,0,0,7,7,0,
-    0,0,7,7,0,0,7,7,
-    0,0,0,7,7,7,7,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 9 DEMON FRAME 1 */
-[
-    6,0,0,0,0,0,0,6,
-    0,6,6,6,6,6,6,0,
-    0,6,8,6,6,8,6,0,
-    0,6,6,5,5,6,6,0,
-    0,0,6,6,6,6,0,0,
-    0,6,6,6,6,6,6,0,
-    6,0,6,0,0,6,0,6,
-    0,0,6,0,0,6,0,0
-],
-
-/* 10 DEMON FRAME 2 */
-[
-    0,6,0,0,0,0,6,0,
-    6,6,6,6,6,6,6,6,
-    0,6,8,6,6,8,6,0,
-    0,6,6,5,5,6,6,0,
-    0,0,6,6,6,6,0,0,
-    6,6,6,6,6,6,6,6,
-    0,0,6,0,0,6,0,0,
-    0,6,0,0,0,0,6,0
-],
-
-/* 11 BAT FRAME 1 */
-[
-    0,0,0,0,0,0,0,0,
-    5,5,0,0,0,0,5,5,
-    0,5,5,0,0,5,5,0,
-    0,0,5,5,5,5,0,0,
-    0,0,5,8,8,5,0,0,
-    0,0,0,5,5,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 12 BAT FRAME 2 */
-[
-    0,0,0,0,0,0,0,0,
-    0,0,5,0,0,5,0,0,
-    0,5,5,5,5,5,5,0,
-    5,5,0,5,5,0,5,5,
-    0,0,5,8,8,5,0,0,
-    0,0,0,5,5,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 13 DRAGON FRAME 1 */
-[
-    0,0,7,0,0,0,7,0,
-    0,7,7,7,0,7,7,7,
-    7,7,3,7,7,7,3,7,
-    0,7,7,7,7,7,7,0,
-    0,0,7,5,5,7,0,0,
-    0,7,7,7,7,7,7,0,
-    7,7,0,7,7,0,7,7,
-    0,0,0,7,7,0,0,0
-],
-
-/* 14 DRAGON FRAME 2 */
-[
-    7,0,0,0,0,0,0,7,
-    7,7,7,0,0,7,7,7,
-    0,7,3,7,7,3,7,0,
-    0,7,7,7,7,7,7,0,
-    0,0,7,5,5,7,0,0,
-    7,7,7,7,7,7,7,7,
-    0,0,7,7,7,7,0,0,
-    0,0,7,0,0,7,0,0
-],
-
-/* 15 SKULL 1 */
-[
-    0,0,1,1,1,1,0,0,
-    0,1,1,1,1,1,1,0,
-    0,1,5,1,1,5,1,0,
-    0,1,1,1,1,1,1,0,
-    0,0,1,5,5,1,0,0,
-    0,0,1,1,1,1,0,0,
-    0,0,1,0,0,1,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 16 SKULL 2 */
-[
-    0,0,0,1,1,0,0,0,
-    0,0,1,1,1,1,0,0,
-    0,1,1,1,1,1,1,0,
-    0,1,5,1,1,5,1,0,
-    0,1,1,5,5,1,1,0,
-    0,0,1,1,1,1,0,0,
-    0,0,1,5,5,1,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 17 HORNED SKULL */
-[
-    2,0,0,0,0,0,0,2,
-    2,2,0,1,1,0,2,2,
-    0,2,1,1,1,1,2,0,
-    0,1,1,1,1,1,1,0,
-    0,1,5,1,1,5,1,0,
-    0,0,1,5,5,1,0,0,
-    0,0,1,1,1,1,0,0,
-    0,0,1,0,0,1,0,0
-],
-
-/* 18 BONES */
-[
-    1,1,0,0,0,0,1,1,
-    0,1,1,0,0,1,1,0,
-    0,0,1,1,1,1,0,0,
-    0,0,0,1,1,0,0,0,
-    0,0,0,1,1,0,0,0,
-    0,0,1,1,1,1,0,0,
-    0,1,1,0,0,1,1,0,
-    1,1,0,0,0,0,1,1
-],
-
-/* 19 CABIN */
-[
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 20 MOUNTAIN_1 */
-[
-    0,4,0,0,0,0,0,0,
-    4,4,4,0,4,0,0,0,
-    0,0,0,4,4,4,0,0,
-    0,0,4,4,4,4,4,0,
-    0,4,0,4,4,4,4,4,
-    4,4,4,0,0,0,0,0,
-    0,4,4,4,0,0,4,0,
-    0,0,0,0,0,4,4,4
-],
-
-/* 21 MOUNTAIN_2 */
-[
-    0,0,0,0,0,0,4,0,
-    0,0,0,4,0,4,4,4,
-    0,0,4,4,4,0,0,0,
-    0,4,4,4,4,4,0,0,
-    4,4,4,4,4,0,4,0,
-    0,0,0,0,0,4,4,4,
-    0,4,0,0,4,4,4,0,
-    4,4,4,0,0,0,0,0
-],
-
-/* 22 RIVER_1 */
-[
-    0,15,0,0,0,0,0,0,
-    0,0,15,0,0,0,0,0,
-    0,0,0,15,0,0,0,0,
-    0,0,0,0,15,0,0,0,
-    0,0,15,0,15,0,0,0,
-    0,15,0,15,0,0,0,0,
-    15,0,0,0,0,0,0,0,
-    0,15,0,0,0,0,0,0
-],
-
-/* 23 RIVER_2 */
-[
-    0,0,15,0,0,0,0,0,
-    0,0,15,0,0,0,0,0,
-    0,15,0,0,0,15,15,0,
-    15,0,0,0,15,0,0,15,
-    15,0,15,15,0,0,0,0,
-    0,15,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 24 AXE */
-[
-    0,0,0,0,4,4,0,0,
-    0,0,0,4,4,4,4,0,
-    0,0,0,4,4,4,0,0,
-    0,0,2,2,4,0,0,0,
-    0,2,2,0,0,0,0,0,
-    2,2,0,0,0,0,0,0,
-    2,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 25 FOREST / FOREST_1 — newer artwork */
-[
-    0,0,7,7,0,0,0,0,
-    0,7,7,7,7,0,7,0,
-    7,7,7,7,0,7,7,7,
-    0,7,7,0,7,7,7,7,
-    0,0,0,7,7,7,7,0,
-    0,7,7,0,7,7,0,0,
-    7,7,7,7,0,0,7,0,
-    0,7,7,0,0,7,7,7
-],
-
-/* 26 PLAYER - WALK FRAME 1 */
-[
-    0,0,1,1,1,1,0,0,
-    0,0,1,5,5,1,0,0,
-    0,0,0,1,1,0,0,0,
-    0,0,9,9,9,9,0,0,
-    0,1,9,9,9,9,1,0,
-    0,0,9,9,9,9,0,0,
-    0,0,2,0,0,2,0,0,
-    0,2,2,0,0,2,2,0
-],
-
-/* 27 PLAYER - WALK FRAME 2 */
-[
-    0,0,1,1,1,1,0,0,
-    0,0,1,5,5,1,0,0,
-    0,0,0,1,1,0,0,0,
-    0,0,9,9,9,9,0,0,
-    0,1,9,9,9,9,1,0,
-    0,0,9,9,9,9,0,0,
-    0,0,0,2,2,0,0,0,
-    0,0,2,0,0,2,0,0
-],
-
-/* 28 PLAYER WITH BOW - FRAME 1 */
-[
-    0,0,1,1,1,1,0,2,
-    0,0,1,5,5,1,2,0,
-    0,0,0,1,1,0,2,0,
-    0,0,9,9,9,2,0,0,
-    0,1,9,9,9,2,0,0,
-    0,0,9,9,9,2,0,0,
-    0,0,2,0,0,2,2,0,
-    0,2,2,0,0,2,0,0
-],
-
-/* 29 PLAYER WITH BOW - FRAME 2 */
-[
-    0,0,1,1,1,1,0,2,
-    0,0,1,5,5,1,2,0,
-    0,0,0,1,1,0,2,0,
-    0,0,9,9,9,2,4,0,
-    0,1,9,9,9,2,4,4,
-    0,0,9,9,9,2,4,0,
-    0,0,0,2,2,0,2,0,
-    0,0,2,0,0,2,0,2
-],
-
-/* 30 PLAYER WITH SWORD - FRAME 1 */
-[
-    0,0,1,1,1,1,0,4,
-    0,0,1,5,5,1,0,4,
-    0,0,0,1,1,0,0,4,
-    0,0,9,9,9,9,3,4,
-    0,1,9,9,9,9,3,0,
-    0,0,9,9,9,9,0,0,
-    0,0,2,0,0,2,0,0,
-    0,2,2,0,0,2,2,0
-],
-
-/* 31 PLAYER WITH SWORD - FRAME 2 */
-[
-    0,0,1,1,1,1,0,0,
-    0,0,1,5,5,1,0,0,
-    0,0,0,1,1,0,0,0,
-    0,0,9,9,9,9,3,4,
-    0,1,9,9,9,9,4,4,
-    0,0,9,9,9,9,3,4,
-    0,0,0,2,2,0,0,0,
-    0,0,2,0,0,2,0,0
-],
-
-/* 32 RAT - FRAME 1 */
-[
-    0,0,0,0,0,0,0,0,
-    0,0,0,2,2,0,0,0,
-    0,0,2,2,2,2,0,0,
-    0,2,2,2,1,2,2,0,
-    2,2,2,2,2,2,2,2,
-    0,0,2,2,2,2,0,0,
-    0,0,2,0,2,0,0,0,
-    0,2,0,0,0,2,0,0
-],
-
-/* 33 RAT - FRAME 2 */
-[
-    0,0,0,0,0,0,0,0,
-    0,0,0,2,2,0,0,0,
-    0,0,2,2,2,2,0,0,
-    0,2,2,2,1,2,2,0,
-    2,2,2,2,2,2,2,2,
-    0,2,2,2,2,2,0,0,
-    2,0,0,2,0,2,0,0,
-    0,0,2,0,0,0,2,0
-],
-
-/* 34 SPIDER - FRAME 1 */
-[
-    0,2,0,0,0,0,2,0,
-    2,0,2,0,0,2,0,2,
-    2,0,0,2,2,0,0,2,
-    0,2,2,2,2,2,2,0,
-    0,2,2,1,1,2,2,0,
-    2,0,2,2,2,2,0,2,
-    2,0,0,2,2,0,0,2,
-    0,2,0,0,0,0,2,0
-],
-
-/* 35 SPIDER - FRAME 2 */
-[
-    2,0,0,0,0,0,0,2,
-    0,2,0,0,0,0,2,0,
-    0,2,2,2,2,2,2,0,
-    2,0,2,2,2,2,0,2,
-    2,0,2,1,1,2,0,2,
-    0,2,2,2,2,2,2,0,
-    0,2,0,2,2,0,2,0,
-    2,0,0,0,0,0,0,2
-],
-
-/* 36 BLOB - FRAME 1 */
-[
-    0,0,0,2,2,0,0,0,
-    0,0,2,2,2,2,0,0,
-    0,2,2,2,2,2,2,0,
-    0,2,1,2,2,1,2,0,
-    2,2,1,2,2,1,2,2,
-    2,2,2,2,2,2,2,2,
-    2,2,2,2,2,2,2,2,
-    0,2,2,2,2,2,2,0
-],
-
-/* 37 BLOB - FRAME 2 */
-[
-    0,0,0,0,0,0,0,0,
-    0,0,0,2,2,0,0,0,
-    0,2,2,2,2,2,2,0,
-    2,2,2,2,2,2,2,2,
-    2,2,1,2,2,1,2,2,
-    2,2,1,2,2,1,2,2,
-    0,2,2,2,2,2,2,0,
-    0,0,2,2,2,2,0,0
-],
-
-/* 38 WINGED DRAGON - FRAME 1 */
-[
-    2,0,0,2,2,0,0,2,
-    2,2,0,2,2,0,2,2,
-    2,2,2,2,2,2,2,2,
-    0,2,2,1,1,2,2,0,
-    0,0,2,2,2,2,0,0,
-    0,2,2,2,2,2,2,0,
-    2,0,0,2,2,0,0,2,
-    0,0,2,0,0,2,0,0
-],
-
-/* 39 WINGED DRAGON - FRAME 2 */
-[
-    0,0,0,2,2,0,0,0,
-    0,0,2,2,2,2,0,0,
-    2,2,2,2,2,2,2,2,
-    2,2,2,1,1,2,2,2,
-    0,2,2,2,2,2,2,0,
-    0,0,2,2,2,2,0,0,
-    0,2,0,2,2,0,2,0,
-    2,0,0,2,2,0,0,2
-],
-
-/* 40 ARROW */
-[
-    0,0,0,0,0,0,3,0,
-    0,0,0,0,0,3,3,0,
-    0,0,0,0,3,3,3,0,
-    0,0,0,3,3,3,0,0,
-    0,0,3,0,3,0,0,0,
-    0,3,0,0,0,0,0,0,
-    3,3,0,0,0,0,0,0,
-    3,0,3,0,0,0,0,0
-],
-
-/* 41 RAT TRACKS */
-[
-    0,0,0,0,0,0,0,0,
-    0,1,0,0,0,0,0,0,
-    0,0,1,0,0,1,0,0,
-    0,0,0,0,1,0,0,0,
-    0,1,0,0,0,0,0,0,
-    0,0,1,0,0,1,0,0,
-    0,0,0,0,1,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 42 DEMON TRACKS */
-[
-    0,0,0,0,0,0,0,0,
-    0,1,1,0,1,0,1,0,
-    0,0,1,0,1,1,1,0,
-    0,1,1,0,0,1,0,0,
-    0,1,1,0,0,0,0,0,
-    0,0,0,0,1,1,0,0,
-    0,0,0,1,1,1,1,0,
-    0,0,0,0,1,1,0,0
-],
-
-/* 43 FIRE_ARROW_SPRITE */
-[
-    0,0,0,0,1,0,0,0,
-    0,0,0,1,1,1,0,0,
-    0,0,0,0,1,0,0,0,
-    0,0,0,0,1,0,0,0,
-    0,0,0,0,1,0,0,0,
-    0,0,0,0,1,0,0,0,
-    0,0,0,0,1,0,0,0,
-    0,0,0,0,1,0,0,0
-],
-
-/* 44 GRASS — newer artwork */
-[
-    11,11,11,11,11,11,11,11,
-    11,11,11,11,12,11,11,11,
-    11,11,12,11,11,11,11,11,
-    11,11,11,11,11,11,12,11,
-    11,11,11,11,11,11,12,11,
-    11,12,11,11,11,11,11,11,
-    11,11,11,11,11,11,11,11,
-    11,11,11,12,11,11,11,11
-],
-
-/* 45 WALL */
-[
-    4,4,4,4,4,4,4,4,
-    4,5,5,5,4,5,5,4,
-    4,5,5,5,4,5,5,4,
-    4,4,4,4,4,4,4,4,
-    4,5,5,4,5,5,5,4,
-    4,5,5,4,5,5,5,4,
-    4,4,4,4,4,4,4,4,
-    4,5,5,5,4,5,5,4
-],
-
-/* 46 CABIN_1 */
-[
-    0,0,8,0,0,0,0,0,
-    0,0,0,8,0,0,0,0,
-    0,0,4,0,0,0,0,0,
-    0,2,2,2,2,2,2,0,
-    2,2,2,2,2,2,2,2,
-    0,5,5,5,5,5,5,0,
-    0,5,3,5,5,3,5,0,
-    0,5,5,5,5,3,5,0
-],
-
-/* 47 CABIN_2 */
-[
-    0,0,0,8,0,0,0,0,
-    0,4,0,0,0,0,0,0,
-    0,0,8,0,0,0,0,0,
-    0,2,2,2,2,2,2,0,
-    2,2,2,2,2,2,2,2,
-    0,5,5,5,5,5,5,0,
-    0,5,3,5,5,3,5,0,
-    0,5,5,5,5,3,5,0
-],
-
-/* 48 RIVER_3 */
-[
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,15,0,0,0,0,0,0,
-    15,0,15,0,0,0,0,0,
-    0,0,15,0,0,0,0,0,
-    0,0,15,0,0,0,0,0,
-    0,15,0,0,0,0,0,0,
-    0,15,0,0,0,0,0,0
-],
-
-/* 49 RIVER_4 */
-[
-    0,0,15,0,0,0,0,0,
-    0,0,15,0,0,0,0,0,
-    0,15,0,0,0,15,15,0,
-    15,0,0,0,15,0,0,15,
-    15,0,15,15,0,0,0,0,
-    0,15,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 50 CLOUDY_PEAK_1 */
-[
-    0,13,13,0,0,0,0,0,
-    13,13,13,13,13,0,0,0,
-    0,13,13,0,0,0,0,0,
-    0,13,0,0,0,0,0,0,
-    13,13,0,0,0,0,0,0,
-    13,13,13,0,0,0,0,0,
-    13,13,13,13,0,0,0,0,
-    13,8,13,13,13,0,0,0
-],
-
-/* 51 CLOUDY_LOWER_LEFT */
-[
-    0,0,0,0,0,13,13,13,
-    0,0,0,0,0,8,13,8,
-    0,0,0,0,8,8,8,8,
-    0,0,0,8,8,8,8,8,
-    0,0,8,8,8,8,8,8,
-    0,8,8,8,8,8,8,8,
-    8,8,8,8,8,8,8,8,
-    0,0,0,0,0,0,0,0
-],
-
-/* 52 CLOUDY_LOWER_RIGHT */
-[
-    8,8,13,8,8,0,0,0,
-    8,8,8,8,8,8,0,0,
-    8,8,8,8,8,8,0,0,
-    8,8,8,8,8,8,8,0,
-    8,8,8,8,8,8,8,0,
-    8,8,8,8,8,8,8,8,
-    8,8,8,8,8,8,8,8,
-    0,0,0,0,0,0,0,0
-],
-
-/* 53 CLOUDY_PEAK_2 */
-[
-    0,0,13,13,0,0,0,0,
-    0,13,13,13,13,13,0,0,
-    0,13,13,0,0,0,0,0,
-    0,13,0,0,0,0,0,0,
-    13,13,0,0,0,0,0,0,
-    13,13,13,0,0,0,0,0,
-    13,13,13,13,0,0,0,0,
-    13,8,13,13,13,0,0,0
-],
-
-/* 54 CLOUDY_PEAK_3 */
-[
-    13,13,0,0,0,0,0,0,
-    13,13,13,13,0,0,0,0,
-    0,13,13,0,0,0,0,0,
-    0,13,0,0,0,0,0,0,
-    13,13,0,0,0,0,0,0,
-    13,13,13,0,0,0,0,0,
-    13,13,13,13,0,0,0,0,
-    13,8,13,13,13,0,0,0
-],
-
-/* 55 WALL_HORIZONTAL */
-[
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    6,0,6,0,6,0,6,0,
-    6,6,6,6,6,6,6,6,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 56 WALL_VERTICAL */
-[
-    0,0,0,6,6,0,0,0,
-    0,0,0,0,6,0,0,0,
-    0,0,0,6,6,0,0,0,
-    0,0,0,0,6,0,0,0,
-    0,0,0,6,6,0,0,0,
-    0,0,0,0,6,0,0,0,
-    0,0,0,6,6,0,0,0,
-    0,0,0,0,6,0,0,0
-],
-
-/* 57 FOREST_2 */
-[
-    0,0,0,7,7,0,0,0,
-    0,7,0,7,7,7,0,0,
-    7,7,7,0,7,7,7,0,
-    7,7,7,7,0,7,7,0,
-    0,7,7,7,7,0,0,0,
-    0,0,7,7,0,7,7,0,
-    0,7,0,0,7,7,7,7,
-    7,7,7,0,0,7,7,0
-],
-
-/* 58 CLOUDY_UPPER_LEFT */
-[
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,13,
-    0,0,0,0,0,0,13,13
-],
-
-
-/* 59 WALL_HORIZONTAL_DOOR */
-[
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    6,0,6,0,0,0,6,0,
-    6,6,6,0,0,6,6,6,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0
-],
-
-/* 60 WALL_VERTICAL_DOOR */
-[
-    0,0,0,6,6,0,0,0,
-    0,0,0,0,6,0,0,0,
-    0,0,0,6,6,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,6,0,0,0,
-    0,0,0,6,6,0,0,0,
-    0,0,0,0,6,0,0,0
-],
-/* 61 THRONE */
-[
-    0,0,0,2,0,0,0,0,
-    0,0,2,2,2,0,0,0,
-    0,0,2,1,2,0,0,0,
-    0,0,2,1,2,0,0,0,
-    0,2,1,1,1,2,0,0,
-    0,2,3,3,3,2,0,0,
-    0,2,0,0,2,0,0,0,
-    0,2,0,0,2,0,0,0
-]
-];
-
-/* =========================================================
-   7. ANIMATION DEFINITIONS
-========================================================= */
-
-const ANIMATION = {
-    SNAKE:  [SPRITE.SNAKE_1,  SPRITE.SNAKE_2],
-    DEMON:  [SPRITE.DEMON_1,  SPRITE.DEMON_2],
-    BAT:    [SPRITE.BAT_1,    SPRITE.BAT_2],
-    DRAGON: [SPRITE.DRAGON_1, SPRITE.DRAGON_2],
-
-
-    RAT:    [SPRITE.RAT_1, SPRITE.RAT_2],
-    SPIDER: [SPRITE.SPIDER_1, SPRITE.SPIDER_2],
-    BLOB:   [SPRITE.BLOB_1, SPRITE.BLOB_2],
-
-    WINGED_DRAGON: [
-        SPRITE.WINGED_DRAGON_1,
-        SPRITE.WINGED_DRAGON_2
-    ],
-
-    PLAYER: [SPRITE.PLAYER_1, SPRITE.PLAYER_2],
-    PLAYER_BOW: [SPRITE.PLAYER_BOW_1, SPRITE.PLAYER_BOW_2],
-    PLAYER_SWORD: [SPRITE.PLAYER_SWORD_1, SPRITE.PLAYER_SWORD_2],
-    
-    CABIN: [SPRITE.CABIN_1, SPRITE.CABIN_2],
-};
-
-
-/* =========================================================
-   8. ROOM CELL ENCODING
-========================================================= */
-
-function B(block, orientation = N) {
-    return (
-        (block & 63) |
-        ((orientation & 3) << 6)
-    );
-}
-
-
-/* =========================================================
-   9. ROOM DEFINITIONS
-
-   Each room is 9x9 blocks.
-========================================================= */
-
-
-/* =========================================================
-   9. ROOM DEFINITIONS
-T
-   9x9 blocks per room.
-
-   0 = wall
-   1 = floor
-   B(2, direction) = diagonal corner block
-========================================================= */
-
-const ROOMS = [
-
-    // ROOM 0
-    [
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,B(2,N),1,B(2,E),0,0,0,
-        0,B(2,N),1,1,1,1,1,1,1,
-        0,1,B(2,S),B(2,W),1,B(2,S),0,0,0,
-        0,1,B(2,E),0,0,0,0,0,0,
-        0,B(2,W),1,1,B(2,E),0,0,0,0,
-        0,0,0,B(2,W),1,0,0,0,0
-    ],
-
-    // ROOM 1
-    [
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,B(2,N),1,B(2,E),0,0,0,
-        0,1,1,1,1,1,1,1,1,
-        0,1,B(2,S),B(2,W),1,B(2,S),0,0,0,
-        0,1,B(2,E),0,0,0,0,0,0,
-        0,B(2,W),1,1,B(2,E),0,0,0,0,
-        0,0,0,B(2,W),1,0,0,0,0
-    ],
-
-    // ROOM 2
-[
-    0,0,0,0,1,0,0,0,0,
-    0,0,0,B(2,N),1,B(2,E),0,0,0,
-    0,0,B(2,N),1,1,1,B(2,E),0,0,
-    0,0,1,1,1,1,1,B(2,E),0,
-    0,0,1,1,1,1,1,1,1,
-    0,0,1,1,1,1,1,B(2,S),0,
-    0,0,B(2,W),1,1,1,B(2,S),0,0,
-    0,0,0,B(2,W),1,B(2,S),0,0,0,
-    0,0,0,0,1,0,0,0,0
-],
-
-    // ROOM 3
-    [
-        0,0,0,B(2,N),1,B(2,E),0,0,0,
-        0,B(2,N),1,1,1,1,1,B(2,E),0,
-        0,1,B(2,S),B(2,W),1,B(2,S),B(2,W),1,0,
-        0,1,B(2,E),B(2,N),1,B(2,E),0,1,0,
-        0,B(2,W),1,1,1,1,0,1,1,
-        0,0,0,B(2,W),1,B(2,S),0,0,0,
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,0,1,0,0,0,0
-    ],
-
-    // ROOM 4
-    [
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,B(2,N),1,B(2,E),0,0,0,
-        0,0,0,1,1,1,0,0,0,
-        0,0,0,1,1,1,0,0,0,
-        0,0,0,1,1,1,1,1,1,
-        0,0,0,1,1,1,0,0,0,
-        0,0,0,1,1,1,0,0,0,
-        0,0,0,B(2,W),1,B(2,S),0,0,0,
-        0,0,0,0,1,0,0,0,0
-    ],
-
-    // ROOM 5
-    [
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,B(2,N),1,B(2,E),0,0,0,
-        0,0,0,1,1,1,1,1,1,
-        0,0,0,B(2,W),1,B(2,S),0,0,0,
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,0,1,0,0,0,0
-    ],
-
-    // ROOM 6
-    [
-        0,0,0,B(2,N),1,B(2,E),0,0,0,
-        0,0,0,1,1,1,1,B(2,E),0,
-        0,0,0,B(2,W),1,B(2,S),B(2,W),1,0,
-        0,0,0,B(2,N),1,B(2,E),0,1,0,
-        0,B(2,N),1,1,1,1,0,1,1,
-        0,1,B(2,S),B(2,W),1,B(2,S),0,0,0,
-        0,1,B(2,E),0,0,0,0,0,0,
-        0,B(2,W),1,1,B(2,E),0,0,0,0,
-        0,0,0,B(2,W),1,0,0,0,0
-    ],
-
-    // ROOM 7
-    [
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,1,1,1,0,0,0,
-        0,0,B(2,N),1,1,1,B(2,E),0,0,
-        0,0,1,1,1,1,1,1,0,
-        0,0,1,1,1,1,1,1,1,
-        0,0,1,1,1,1,1,1,0,
-        0,0,B(2,W),1,1,1,B(2,S),0,0,
-        0,0,0,1,1,1,0,0,0,
-        0,0,0,0,1,0,0,0,0
-    ],
-
-    // ROOM 8
-    [
-        0,0,0,0,1,0,0,0,0,
-        0,0,0,B(2,N),1,B(2,E),0,0,0,
-        0,0,B(2,N),1,1,1,B(2,E),0,0,
-        0,0,1,1,1,1,1,B(2,E),0,
-        0,0,1,1,1,1,1,1,1,
-        0,0,1,1,1,1,1,B(2,S),0,
-        0,0,B(2,W),1,1,1,B(2,S),0,0,
-        0,0,0,B(2,W),1,B(2,S),0,0,0,
-        0,0,0,0,1,0,0,0,0
-    ],
-
-    // ROOM 9
-	[
-		0,0,0,0,1,0,0,0,0,
-		0,0,0,B(2,N),1,B(2,E),0,0,0,
-		0,0,B(2,N),1,1,1,B(2,E),0,0,
-		0,0,1,1,1,1,1,0,0,
-		0,0,1,1,1,1,1,1,1,
-		0,0,1,1,1,1,1,0,0,
-		0,0,B(2,W),1,1,1,B(2,S),0,0,
-		0,0,0,B(2,W),1,B(2,S),0,0,0,
-		0,0,0,0,1,0,0,0,0
-	]
-
-];
-
-/* =========================================================
-   10. DUNGEON ENCODING
-========================================================= */
-
-function R(room, orientation = N) {
-    return (
-        (room & 15) |
-        ((orientation & 3) << 4)
-    );
-}
-
-
-/* =========================================================
-   11. DUNGEON MAP
-========================================================= */
-
-let DUNGEON_SEED = GAME_SEED;
-
-const DUNGEON_W = 12;
-const DUNGEON_H = 4;
-
-let DUNGEON_ROOMS = generateDungeonRooms(
-    DUNGEON_W,
-    DUNGEON_H,
-    DUNGEON_SEED
-);
-
-let DUNGEON = DUNGEON_ROOMS.map(row =>
-    row.map(cell =>
-        R(cell.room, cell.orientation)
-    )
-);
-
-/* =========================================================
-   12. WORLD AND VIEW CONSTANTS
-========================================================= */
-
-const BLOCK_PIXELS = 8;
-const ROOM_BLOCKS = 9;
-
-const WORLD_W = DUNGEON_W * ROOM_BLOCKS;
-const WORLD_H = DUNGEON_H * ROOM_BLOCKS;
-
-const VIEW_W = 20;
-const VIEW_H = 12;
-
-const TYPE = {
-    GRASS: 0,
-    MOUNTAIN: 1,
-    FOREST: 2,
-    RIVER: 3,
-    WALL: 4,
-    BLUE_MOUNTAIN: 5,
-    PURPLE_MOUNTAIN: 6,
-    RED_MOUNTAIN: 7
-};
-
-const MOUNTAIN_COLORS = {
-    [TYPE.BLUE_MOUNTAIN]: "#245bdb",
-    [TYPE.PURPLE_MOUNTAIN]: "#171b1a",
-    [TYPE.RED_MOUNTAIN]: "#dc422d"
-};
-
-const PALETTES = {
-    BROWN: "#8a7020"
-};
-
-let OVERWORLD_MAP = [];
 
 /* =========================================================
    13. OBJECT TYPES
@@ -1310,8 +225,101 @@ const OBJECT = {
     ARROW: 26,
     RAT_TRACKS: 27,
     DEMON_TRACKS: 28,
-    THRONE: 29
+    THRONE: 29,
+
+    JEFF_CHOINSKI: 30,
+    CALVIN: 31,
+    JAMES_DUBAY: 32,
+
+    // Statues
+    STATUE_KNIGHT: 33,
+    STATUE_PRIESTESS: 34,
+    STATUE_BEAST: 35,
+
+    // Treasure
+    GEM: 36,
+    CHEST: 37,
+
+    // Animated objects and characters
+    SKELETON: 38,
+    PRIESTESS: 39,
+    FLOATING_EYE: 40,
+    FOUNTAIN: 41,
+    CRAB: 42,
+    GHOST: 43,
+
+    // Potions and scroll
+    POTION_HEALTH: 44,
+    POTION_MAGIC: 45,
+    POTION_ANTIDOTE: 46,
+    POTION_PROTECTION: 47,
+    SCROLL: 48,
+
+    // Additional creatures and characters
+    MEDUSA: 49,
+    BEAR: 50,
+    TALKING_DOOR: 51,
+    
+    COMPASS: 52,
+    ARMOR: 53,
+    SNAKE_CHARMER: 54,
+    PALM_TREE: 55
 };
+
+/* =========================================================
+   10. DUNGEON ENCODING
+========================================================= */
+
+function R(room, orientation = N) {
+    return (
+        (room & 15) |
+        ((orientation & 3) << 4)
+    );
+}
+
+
+/* =========================================================
+   11. DUNGEON MAP
+========================================================= */
+
+const DUNGEON_W = 12;
+const DUNGEON_H = 4;
+
+/* =========================================================
+   12. WORLD AND VIEW CONSTANTS
+========================================================= */
+
+const BLOCK_PIXELS = 16;
+const ROOM_BLOCKS = 9;
+
+const WORLD_W = DUNGEON_W * ROOM_BLOCKS;
+const WORLD_H = DUNGEON_H * ROOM_BLOCKS;
+
+const VIEW_W = 20;
+const VIEW_H = 12;
+
+const TYPE = {
+    GRASS: 0,
+    MOUNTAIN: 1,
+    FOREST: 2,
+    RIVER: 3,
+    WALL: 4,
+    BLUE_MOUNTAIN: 5,
+    PURPLE_MOUNTAIN: 6,
+    RED_MOUNTAIN: 7
+};
+
+const MOUNTAIN_COLORS = {
+    [TYPE.BLUE_MOUNTAIN]: "#245bdb",
+    [TYPE.PURPLE_MOUNTAIN]: "#171b1a",
+    [TYPE.RED_MOUNTAIN]: "#dc422d"
+};
+
+const PALETTES = {
+    BROWN: "#8a7020"
+};
+
+let OVERWORLD_MAP = [];
 
 /* =========================================================
    14. OBJECT DEFINITIONS
@@ -1321,44 +329,82 @@ const OBJECT = {
 ========================================================= */
 
 const OBJECT_DEFS = [
-    [SPRITE.LADDER,   -1],
-    [SPRITE.BOW,      -1],
-    [SPRITE.QUIVER,   -1],
-    [SPRITE.SWORD,    -1],
-    [SPRITE.KEY,      -1],
-    [SPRITE.CROWN,    -1],
-    [SPRITE.BOAT,     -1],
+    [SPRITE.LADDER,   -1], // 0
+    [SPRITE.BOW,      -1], // 1
+    [SPRITE.QUIVER,   -1], // 2
+    [SPRITE.SWORD,    -1], // 3
+    [SPRITE.KEY,      -1], // 4
+    [SPRITE.CROWN,    -1], // 5
+    [SPRITE.BOAT,     -1], // 6
 
-    [SPRITE.SNAKE_1,  SPRITE.SNAKE_2],
-    [SPRITE.DEMON_1,  SPRITE.DEMON_2],
-    [SPRITE.BAT_1,    SPRITE.BAT_2],
-    [SPRITE.DRAGON_1, SPRITE.DRAGON_2],
+    [SPRITE.SNAKE_1,  SPRITE.SNAKE_2],  // 7
+    [SPRITE.DEMON_1,  SPRITE.DEMON_2],  // 8
+    [SPRITE.BAT_1,    SPRITE.BAT_2],    // 9
+    [SPRITE.DRAGON_1, SPRITE.DRAGON_2], // 10
 
-    [SPRITE.SKULL_1,     -1],
-    [SPRITE.SKULL_2,     -1],
-    [SPRITE.SKULL_HORNS, -1],
-    [SPRITE.BONES,       -1],
+    [SPRITE.SKULL_1,     -1], // 11
+    [SPRITE.SKULL_2,     -1], // 12
+    [SPRITE.SKULL_HORNS, -1], // 13
+    [SPRITE.BONES,       -1], // 14
 
-    [SPRITE.CABIN,       -1],
+    [SPRITE.CABIN, -1], // 15
 
-    [SPRITE.MOUNTAIN_1,  -1],
-    [SPRITE.MOUNTAIN_2,  -1],
+    [SPRITE.MOUNTAIN_1, -1], // 16
+    [SPRITE.MOUNTAIN_2, -1], // 17
 
-    [SPRITE.RIVER_1,     -1],
-    [SPRITE.RIVER_2,     -1],
+    [SPRITE.RIVER_1, -1], // 18
+    [SPRITE.RIVER_2, -1], // 19
 
-    [SPRITE.AXE,         -1],
-    [SPRITE.FOREST,      -1],
+    [SPRITE.AXE,    -1], // 20
+    [SPRITE.FOREST, -1], // 21
+
+    [SPRITE.RAT_1,           SPRITE.RAT_2],           // 22
+    [SPRITE.SPIDER_1,        SPRITE.SPIDER_2],        // 23
+    [SPRITE.BLOB_1,          SPRITE.BLOB_2],          // 24
+    [SPRITE.WINGED_DRAGON_1, SPRITE.WINGED_DRAGON_2], // 25
+
+    [SPRITE.ARROW,        -1], // 26
+    [SPRITE.RAT_TRACKS,   -1], // 27
+    [SPRITE.DEMON_TRACKS, -1], // 28
+    [SPRITE.THRONE,       -1], // 29
+
+    [SPRITE.JEFF_CHOINSKI_1, SPRITE.JEFF_CHOINSKI_2], // 30
+    [SPRITE.CALVIN_1,        SPRITE.CALVIN_2],        // 31
+    [SPRITE.JAMES_DUBAY_1,   SPRITE.JAMES_DUBAY_2],   // 32
+
+    // Statues
+    [SPRITE.STATUE_KNIGHT,    -1], // 33
+    [SPRITE.STATUE_PRIESTESS, -1], // 34
+    [SPRITE.STATUE_BEAST,     -1], // 35
+
+    // Treasure
+    [SPRITE.GEM,   -1], // 36
+    [SPRITE.CHEST, -1], // 37
+
+    // Animated objects and characters
+    [SPRITE.SKELETON_1,     SPRITE.SKELETON_2],     // 38
+    [SPRITE.PRIESTESS_1,    SPRITE.PRIESTESS_2],    // 39
+    [SPRITE.FLOATING_EYE_1, SPRITE.FLOATING_EYE_2], // 40
+    [SPRITE.FOUNTAIN_ALT_1, SPRITE.FOUNTAIN_ALT_2], // 41
+    [SPRITE.CRAB_1,         SPRITE.CRAB_2],         // 42
+    [SPRITE.GHOST_1,        SPRITE.GHOST_2],        // 43
+
+    // Potions and scroll
+    [SPRITE.POTION_HEALTH,     -1], // 44
+    [SPRITE.POTION_MAGIC,      -1], // 45
+    [SPRITE.POTION_ANTIDOTE,   -1], // 46
+    [SPRITE.POTION_PROTECTION, -1], // 47
+    [SPRITE.SCROLL,            -1], // 48
+
+    // Additional animated creatures and characters
+    [SPRITE.MEDUSA_1,      SPRITE.MEDUSA_2],      // 49
+    [SPRITE.BEAR_1,        SPRITE.BEAR_2],        // 50
+    [SPRITE.TALKING_DOOR_1, SPRITE.TALKING_DOOR_2], // 51
     
-    [SPRITE.RAT_1,           SPRITE.RAT_2],
-    [SPRITE.SPIDER_1,        SPRITE.SPIDER_2],
-    [SPRITE.BLOB_1,          SPRITE.BLOB_2],
-    [SPRITE.WINGED_DRAGON_1, SPRITE.WINGED_DRAGON_2],
-
-    [SPRITE.ARROW,        -1],  // 26
-    [SPRITE.RAT_TRACKS,   -1],  // 27
-    [SPRITE.DEMON_TRACKS, -1],  // 28
-    [SPRITE.THRONE,       -1]   // 29
+    [SPRITE.COMPASS, -1], // 52
+    [SPRITE.ARMOR,   -1], // 53
+    [SPRITE.SNAKE_CHARMER, -1], // 54
+    [SPRITE.PALM_TREE,     -1]  // 55
 ];
 
 
@@ -1390,7 +436,10 @@ const INVENTORY_ICONS = [
     ["crown", SPRITE.CROWN],
     ["arrow", SPRITE.QUIVER],
     ["sword", SPRITE.SWORD],
-    ["bow",   SPRITE.BOW]
+    ["bow",   SPRITE.BOW],
+    ["compass",   SPRITE.COMPASS],
+    ["armor",   SPRITE.ARMOR],
+    ["snakeCharmer", SPRITE.SNAKE_CHARMER]
 ];
 
 
@@ -1408,24 +457,12 @@ const MONSTER_SOUNDS = {
     [OBJECT.RAT]:           SOUND.RAT,
     [OBJECT.SPIDER]:        SOUND.SPIDER,
     [OBJECT.BLOB]:          SOUND.BLOB,
-    [OBJECT.WINGED_DRAGON]: SOUND.WINGED_DRAGON
+    [OBJECT.WINGED_DRAGON]: SOUND.WINGED_DRAGON,
+    [OBJECT.BEAR]: SOUND.BEAR
 };
 
 const MONSTER_SOUND_RANGE = 10;
 
-/* =========================================================
-   15. DUNGEON OBJECT PLACEMENTS
-
-   [world X, world Y, object type]
-========================================================= */
-
-let DUNGEON_PLACEMENT = populateDungeon(
-    DUNGEON_ROOMS,
-    GAME_DUNGEON_COLOR,
-    ROOM_BLOCKS,
-    ROOM_BLOCKS,
-    DUNGEON_SEED
-);
 
 /* =========================================================
    PLACEMENT TYPE TO GAME OBJECT MAPPING
@@ -1454,41 +491,160 @@ const PLACEMENT_OBJECT_TYPES = {
     spider: OBJECT.SPIDER,
     blob: OBJECT.BLOB,
     wingedDragon: OBJECT.WINGED_DRAGON,
+    
+    // Additional animated monsters
+    skeleton: OBJECT.SKELETON,
+    floatingEye: OBJECT.FLOATING_EYE,
+    crab: OBJECT.CRAB,
+    ghost: OBJECT.GHOST,
+    medusa: OBJECT.MEDUSA,
+    bear: OBJECT.BEAR,
 
+    // Animated characters
+    priestess: OBJECT.PRIESTESS,
+    talkingDoor: OBJECT.TALKING_DOOR,
+    jeffChoinski: OBJECT.JEFF_CHOINSKI,
+    jamesDubay: OBJECT.JAMES_DUBAY,
+    calvin: OBJECT.CALVIN,
+    
     // Clues and landmarks
     skull: OBJECT.SKULL_1,
     ratTracks: OBJECT.RAT_TRACKS,
     demonTracks: OBJECT.DEMON_TRACKS,
-    throne: OBJECT.THRONE
+    throne: OBJECT.THRONE,
+    compass: OBJECT.COMPASS,
+    armor: OBJECT.ARMOR,
+    snakeCharmer: OBJECT.SNAKE_CHARMER,
+    palmTree: OBJECT.PALM_TREE
 };
-/* =========================================================
-   CONVERT PLACEMENTS TO GAME OBJECT FORMAT
 
-   [world X, world Y, object type]
+/* =========================================================
+   TERRAIN CLASSIFICATION GROUPS
+
+   These sets contain sprite indices, not block IDs.
 ========================================================= */
 
-const DUNGEON_OBJECTS = [];
+const is_pit = new Set();
+const is_wall = new Set();
+const is_water = new Set();
 
-for (const entity of [
-    ...DUNGEON_PLACEMENT.objects,
-    ...DUNGEON_PLACEMENT.monsters
-]) {
 
-    const objectType =
-        PLACEMENT_OBJECT_TYPES[entity.type];
+/* =========================================================
+   CLASSIFY TERRAIN SPRITES — RUN ONCE
+========================================================= */
 
-    if (objectType === undefined) {
-        console.warn(
-            "Unmapped dungeon object:",
-            entity.type
-        );
-        continue;
+function classifyTerrainSprites() {
+
+    function getColors(spriteIndex) {
+
+        const sprite = SPRITES[spriteIndex];
+
+        if (!sprite)
+            throw new Error("Missing terrain sprite: " + spriteIndex);
+
+        return new Set(sprite);
     }
 
-    DUNGEON_OBJECTS.push([
-        entity.x,
-        entity.y,
-        objectType
-    ]);
+    const wallColors = getColors(SPRITE.BLOCK_WALL);
+    const floorColors = getColors(SPRITE.BLOCK_FLOOR);
+    const waterColors = getColors(SPRITE.BLOCK_WATER);
+    const pitColor = 18;
+
+    is_pit.clear();
+    is_wall.clear();
+    is_water.clear();
+
+    const terrainSprites =
+        new Set(Object.values(BLOCK_SPRITES));
+
+    for (const spriteIndex of terrainSprites) {
+
+        const sprite = SPRITES[spriteIndex];
+
+        if (!sprite)
+            continue;
+
+        let wall = 0;
+        let floor = 0;
+        let pit = 0;
+        let water = 0;
+
+        for (const color of sprite) {
+
+            if (color === pitColor)
+                pit++;
+            else if (waterColors.has(color))
+                water++;
+            else if (wallColors.has(color))
+                wall++;
+            else if (floorColors.has(color))
+                floor++;
+        }
+
+        // Pit wins ties with wall or floor.
+        if (
+            pit > 0 &&
+            pit >= wall &&
+            pit >= floor &&
+            pit >= water
+        ) {
+            is_pit.add(spriteIndex);
+        }
+
+        // Water wins ties with wall or floor.
+        else if (
+            water > 0 &&
+            water >= wall &&
+            water >= floor &&
+            water >= pit
+        ) {
+            is_water.add(spriteIndex);
+        }
+
+        // Wall wins ties with floor.
+        else if (
+            wall > 0 &&
+            wall >= floor &&
+            wall >= pit &&
+            wall >= water
+        ) {
+            is_wall.add(spriteIndex);
+        }
+
+        // Otherwise, the sprite is walkable floor.
+    }
+    
+    console.log(
+        "is_pit = new Set(" +
+        JSON.stringify([...is_pit].sort((a, b) => a - b)) +
+        ");"
+    );
+
+    console.log(
+        "is_wall = new Set(" +
+        JSON.stringify([...is_wall].sort((a, b) => a - b)) +
+        ");"
+    );
+
+    console.log(
+        "is_water = new Set(" +
+        JSON.stringify([...is_water].sort((a, b) => a - b)) +
+        ");"
+    );
 }
 
+
+// Classify all terrain frames once at startup.
+//classifyTerrainSprites();
+is_pit.clear();
+is_wall.clear();
+is_water.clear();
+
+[24,25,29,30,33,34,37,38,39,40,45,48,49]
+    .forEach(id => is_pit.add(id));
+
+[0,2,3,4,5,8,9,11,12,13,17,18,19,20,21,23,26,27,28,31,32,35,36,41,42,43,44]
+    .forEach(id => is_wall.add(id));
+
+[50,51,53,54,56,57,59,60]
+    .forEach(id => is_water.add(id));

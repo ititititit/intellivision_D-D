@@ -57,11 +57,110 @@ const player = {
 		key: false,
 		crown: 0,
 		sword: false,
+		compass: false,
+		armor: false,
+		snakeCharmer: false,
 		bow: true,
-		arrow: 3
+		arrow: 9
 	}
 };
 
+
+/* =========================================================
+   TERRAIN COLOR UNDER THE PLAYER'S CENTER
+========================================================= */
+
+function getPlayerTerrainColor(x, y) {
+
+    if (
+        x < 0 ||
+        y < 0 ||
+        x >= WORLD_W ||
+        y >= WORLD_H
+    ) {
+        return null;
+    }
+
+    const { block, orientation } =
+        decodeBlock(getWorldBlock(x, y));
+
+    const sprite = SPRITES[BLOCK_SPRITES[block]];
+
+    if (!sprite)
+        return null;
+
+    const size = Math.sqrt(sprite.length);
+
+    if (!Number.isInteger(size) || size < 1)
+        return null;
+
+    const center = Math.floor(size / 2);
+    const last = size - 1;
+
+    let sx = center;
+    let sy = center;
+
+    // Find the source pixel for the rotated tile.
+    switch (orientation & 3) {
+
+        case E:
+            sx = center;
+            sy = last - center;
+            break;
+
+        case S:
+            sx = last - center;
+            sy = last - center;
+            break;
+
+        case W:
+            sx = last - center;
+            sy = center;
+            break;
+    }
+
+    return sprite[sy * size + sx];
+}
+
+
+/* =========================================================
+   CHECK PLAYER TERRAIN DEATH
+
+   Returns true if the player is dead.
+========================================================= */
+
+function checkPlayerPitDeath() {
+
+    if (
+        player.won ||
+        gameMode !== GAME_MODE.DUNGEON
+    ) {
+        return false;
+    }
+
+    if (player.dead)
+        return true;
+
+    const { block } =
+        decodeBlock(getWorldBlock(player.x, player.y));
+
+    const spriteIndex = BLOCK_SPRITES[block];
+
+    if (
+        !is_pit.has(spriteIndex) &&
+        !is_wall.has(spriteIndex) &&
+        !is_water.has(spriteIndex)
+    ) {
+        return false;
+    }
+
+    player.health = 0;
+    player.dead = true;
+
+    playSound(SOUND.DEATH, 1);
+
+    return true;
+}
 
 /* =========================================================
    CAN PLAYER MOVE TO
@@ -84,10 +183,16 @@ function canPlayerMoveTo(x, y) {
         return false;
     }
 
-    const blockValue = getWorldBlock(x, y);
-    const blockID = decodeBlock(blockValue).block;
+    const { block } = decodeBlock(getWorldBlock(x, y));
+    const spriteIndex = BLOCK_SPRITES[block];
 
-    return blockID === 1;
+    if (!SPRITES[spriteIndex])
+        return false;
+
+    return (
+        !is_wall.has(spriteIndex) &&
+        !is_water.has(spriteIndex)
+    );
 }
 
 
@@ -176,6 +281,18 @@ function checkPlayerPickup() {
                 player.inventory.boat = true;
                 break;
 
+            case OBJECT.COMPASS:
+                player.inventory.compass = true;
+                break;
+
+            case OBJECT.ARMOR:
+                player.inventory.armor = true;
+                break;
+
+            case OBJECT.SNAKE_CHARMER:
+                player.inventory.snakeCharmer = true;
+                break;
+
 			case OBJECT.THRONE:
 				if (player.inventory.crown >= 2) {
 					player.won = true;
@@ -214,43 +331,72 @@ function checkPlayerPickup() {
 
 function movePlayer(dx, dy) {
 
+    if (
+        gameMode !== GAME_MODE.DUNGEON ||
+        player.dead ||
+        player.won
+    ) {
+        return false;
+    }
+
+    // Check whether terrain changed beneath the player.
+    if (checkPlayerPitDeath()) {
+        drawGame();
+        return false;
+    }
+
+    if (dx === 0 && dy === 0)
+        return false;
+
     const nx = player.x + dx;
     const ny = player.y + dy;
 
-    // Determine facing direction
-    if (dx > 0) {
-        player.direction = E;
-    }
-    else if (dx < 0) {
-        player.direction = W;
-    }
-    else if (dy > 0) {
-        player.direction = S;
-    }
-    else if (dy < 0) {
-        player.direction = N;
-    }
-
-    // Check collision
     if (!canPlayerMoveTo(nx, ny)) {
         drawGame();
         return false;
     }
 
-    // Move player
+    // Update direction only after movement is accepted.
+    if (dx > 0)
+        player.direction = E;
+    else if (dx < 0)
+        player.direction = W;
+    else if (dy > 0)
+        player.direction = S;
+    else
+        player.direction = N;
+
+    const oldX = player.x;
+    const oldY = player.y;
+
     player.x = nx;
     player.y = ny;
 
-    // Update camera
     centerCameraOn(player.x, player.y);
 
-    // Footstep sound
+    // Entering an existing pit kills before triggers or pickups.
+    if (checkPlayerPitDeath()) {
+        drawGame();
+        return true;
+    }
+
+    RoomExtensions.onRoomPlayerStep(
+        player.x,
+        player.y,
+        oldX,
+        oldY,
+        { player }
+    );
+
+    // A stepping trigger may turn this square into a pit.
+    if (checkPlayerPitDeath()) {
+        drawGame();
+        return true;
+    }
+
     playSound(SOUND.STEP, 1);
 
-    // Check for collectible objects
     checkPlayerPickup();
-
-    // Update display
     drawGame();
 
     return true;
@@ -328,7 +474,9 @@ function checkOverworldDungeonEntry(oldX, oldY) {
     // GENERATE DUNGEON
     // -------------------------------------
 
-    regenerateDungeon(seed, color.toLowerCase());
+    // Temporary test: red mountains open the trap dungeon.
+    const dungeonType = color.toLowerCase();
+    regenerateDungeon(seed, dungeonType);
 
 }
 
@@ -411,6 +559,12 @@ function moveOverworldPlayer(dx, dy) {
 
         case SPRITE.FOREST_1:
         case SPRITE.FOREST_2:
+        case SPRITE.FOREST_ISOLATED:
+        case SPRITE.FOREST_END:
+        case SPRITE.FOREST_STRAIGHT:
+        case SPRITE.FOREST_CORNER:
+        case SPRITE.FOREST_THREE_WAY:
+        case SPRITE.FOREST_INTERIOR:
             if (!player.inventory.axe)
                 return;
             break;
@@ -451,7 +605,9 @@ function moveOverworldPlayer(dx, dy) {
 
     overworldPlayer.x = newX;
     overworldPlayer.y = newY;
-
+	if (dx !== 0)
+    	overworldPlayer.facing = dx < 0 ? 1 : 0;
+    
     // -------------------------------------
     // CHECK DUNGEON ENTRANCE
     // -------------------------------------

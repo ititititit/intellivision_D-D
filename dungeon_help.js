@@ -21,6 +21,12 @@
 ========================================================= */
 
 let helpVisible = false;
+let helpPage = "controls";
+
+function showStory() {
+    helpPage = "story";
+    showHelp();
+}
 
 const helpCanvas = document.getElementById("helpCanvas");
 const helpCtx = helpCanvas.getContext("2d");
@@ -43,6 +49,8 @@ function hideHelp() {
 }
 
 function toggleHelp() {
+    helpPage = "controls";
+
     if (helpVisible) hideHelp();
     else showHelp();
 }
@@ -134,6 +142,42 @@ function drawHelp() {
         rect(x, y, 6, 16, C.orangeLight);
     }
 
+	if (helpPage === "story") {
+		label(
+			"THE SHATTERED CROWN",
+			512, 94, 40, C.yellow, "center"
+		);
+	
+		label("YOUR QUEST", 88, 152, 25, C.yellow);
+	
+		label("The crown lies broken, its two halves hidden within", 88, 187, 19);
+		label("Cloudy Mountain. Recover both halves, then sit upon", 88, 214, 19);
+		label("the throne inside the mountain to claim victory.", 88, 241, 19);
+	
+		label("YOU ARE NOT ALONE", 88, 292, 25, C.yellow);
+	
+		label("Explore dungeons and collect equipment to open new paths.", 88, 326, 19);
+		label("Click characters to talk. Some offer help, some test your", 88, 353, 19);
+		label("wit, and some may lead you into trouble. Listen carefully.", 88, 380, 19);
+	
+		label("A FEW CLUES", 88, 428, 25, C.yellow);
+	
+		label("Water, forests and locked barriers need the right equipment.", 88, 460, 18);
+		label("Arrows can trigger surprises. Watch where they bounce.", 88, 486, 18);
+		label("Easy treasure may be a trap. A compass can guide your search.", 88, 512, 18);
+	
+		rect(98, 543, 828, 40, C.white);
+		rect(102, 547, 820, 32, C.purpleDark);
+	
+		label(
+			"PRESS ESCAPE TO RETURN TO THE GAME",
+			512, 563, 20, C.yellow, "center"
+		);
+	
+		ctx.restore();
+		return;
+	}
+
     label("GAME CONTROLS", 512, 92, 46, C.yellow, "center");
     label("MOVEMENT", 88, 152, 27, C.yellow);
     label("FIRE ARROWS", 518, 152, 27, C.yellow);
@@ -173,13 +217,17 @@ function drawHelp() {
     label("CURRENT TILE", 608, 381, 19);
     label("(RESERVED)", 608, 407, 17, C.gray);
 
-    label("MODES", 518, 459, 27, C.yellow);
-    label("BOW MODE TO FIRE", 524, 490, 18);
+	label("TALK TO CHARACTERS", 518, 459, 27, C.yellow);
+	label("CLICK A CHARACTER TO TALK", 524, 490, 18);
 
     line(72, 524, 952, 524, C.gray, 2);
     rect(98, 543, 828, 40, C.white);
     rect(102, 547, 820, 32, C.purpleDark);
-    label("EXPLORE, COLLECT ITEMS, FIGHT ENEMIES, FIND THE EXIT!", 512, 563, 16, C.white, "center");
+    
+	label(
+		"PRESS ESCAPE TO CLOSE HELP",
+		512, 563, 22, C.yellow, "center"
+	);
 
     ctx.restore();
 }

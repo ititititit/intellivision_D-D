@@ -84,6 +84,15 @@ function requestPlayerMovement(dx, dy) {
         return false;
     }
 
+    // Activate room switches when the player enters a tile.
+    RoomExtensions.onRoomPlayerStep(
+        player.x,
+        player.y,
+        oldPlayerX,
+        oldPlayerY,
+        { player }
+    );
+
     updateDungeonVisibility();
 
     // Camera has already moved to its new logical position.
@@ -162,6 +171,9 @@ function isMonsterVisible(monster) {
 
 function updateMonsters() {
 
+	if (characterDialogueOpen)
+        return;
+
     const now = performance.now();
 
     for (const monster of DUNGEON_OBJECTS) {
@@ -221,7 +233,15 @@ function isGameOver() {
 
 function updateGame() {
 
+	if (characterDialogueOpen)
+        return;
+
     animationFrame = (animationFrame + 1) & 1;
+
+    if (gameMode === GAME_MODE.DUNGEON) {
+        RoomExtensions.updateRoomAnimations(350);
+        checkPlayerPitDeath();
+    }
 
     drawGame();
 }

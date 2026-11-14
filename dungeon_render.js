@@ -3,13 +3,11 @@
 /* =========================================================
    DUNGEON RENDERING
 
-   Draws:
-       Dungeon terrain
-       Dungeon objects and projectiles
-       Player
-       Overworld and Cloudy Mountain
-       Death and victory overlays
+   Terrain artwork uses the shared SPRITES array and palette.
+   Each game square displays at 16x16.
+   Room block IDs and collision rules are unchanged.
 
+   Supports both 8x8 and 16x16 sprite arrays.
    Coordinates are in world blocks unless specified.
 ========================================================= */
 
@@ -22,10 +20,12 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
 const RENDER_STEPS = 8;
-const INVENTORY_HEIGHT = 20;
+const INVENTORY_HEIGHT = 28;
 
-const MAP_PIXEL_WIDTH = VIEW_W * BLOCK_PIXELS;
-const MAP_PIXEL_HEIGHT = VIEW_H * BLOCK_PIXELS;
+const DISPLAY_BLOCK_PIXELS = 16;
+
+const MAP_PIXEL_WIDTH = VIEW_W * DISPLAY_BLOCK_PIXELS;
+const MAP_PIXEL_HEIGHT = VIEW_H * DISPLAY_BLOCK_PIXELS;
 
 let renderOffsetX = 0;
 let renderOffsetY = 0;
@@ -44,62 +44,34 @@ ctx.imageSmoothingEnabled = false;
 ========================================================= */
 
 function renderPixel(value) {
-    return Math.round(value * BLOCK_PIXELS);
+    return Math.round(value * DISPLAY_BLOCK_PIXELS);
 }
 
 
 /* =========================================================
-   3. CACHED TERRAIN BLOCKS
-========================================================= */
+   3. TERRAIN BLOCK RENDERING
 
-const BLOCK_CACHE = new Map();
+   Uses the shared sprite renderer and SPRITE_CACHE.
+   Artwork is drawn directly without added shading.
+========================================================= */
 
 function drawBlock(value, bx, by) {
 
-    let image = BLOCK_CACHE.get(value);
+    const { block, orientation } = decodeBlock(value);
 
-    if (!image) {
-
-        const { block, orientation } = decodeBlock(value);
-
-        const offscreen = document.createElement("canvas");
-
-        offscreen.width = BLOCK_PIXELS;
-        offscreen.height = BLOCK_PIXELS;
-
-        const offctx = offscreen.getContext("2d");
-
-        for (let y = 0; y < BLOCK_PIXELS; y++) {
-            for (let x = 0; x < BLOCK_PIXELS; x++) {
-
-                const color = getBlockPixel(
-                    block,
-                    orientation,
-                    x,
-                    y
-                );
-
-                offctx.fillStyle = COLORS[color];
-                offctx.fillRect(x, y, 1, 1);
-            }
-        }
-
-        image = offscreen;
-        BLOCK_CACHE.set(value, image);
-    }
-
-    ctx.drawImage(
-        image,
-        renderPixel(bx),
-        renderPixel(by)
+    drawRotatedSprite(
+        BLOCK_SPRITES[block],
+        bx,
+        by,
+        orientation
     );
 }
-
 
 /* =========================================================
    4. SPRITE RENDERING
 
    Supports:
+       8x8 and 16x16 sprites
        Custom palettes
        Horizontal and vertical reflection
        90-degree rotation
@@ -112,6 +84,7 @@ function drawBlock(value, bx, by) {
 ========================================================= */
 
 const SPRITE_CACHE = new Map();
+
 
 function drawRotatedSprite(
     spriteID,
@@ -126,6 +99,11 @@ function drawRotatedSprite(
     const sprite = SPRITES[spriteID];
 
     if (!sprite)
+        return;
+
+    const spritePixels = Math.sqrt(sprite.length);
+
+    if (!Number.isInteger(spritePixels))
         return;
 
     rotation = ((rotation % 4) + 4) % 4;
@@ -152,17 +130,17 @@ function drawRotatedSprite(
 
         const offscreen = document.createElement("canvas");
 
-        offscreen.width = BLOCK_PIXELS;
-        offscreen.height = BLOCK_PIXELS;
+        offscreen.width = spritePixels;
+        offscreen.height = spritePixels;
 
         const offctx = offscreen.getContext("2d");
 
-        const last = BLOCK_PIXELS - 1;
+        const last = spritePixels - 1;
 
-        for (let y = 0; y < BLOCK_PIXELS; y++) {
-            for (let x = 0; x < BLOCK_PIXELS; x++) {
+        for (let y = 0; y < spritePixels; y++) {
+            for (let x = 0; x < spritePixels; x++) {
 
-                const color = sprite[y * BLOCK_PIXELS + x];
+                const color = sprite[y * spritePixels + x];
 
                 if (color === 0)
                     continue;
@@ -191,10 +169,14 @@ function drawRotatedSprite(
                         break;
                 }
 
-                offctx.fillStyle =
-                    palette?.[color] ?? SPRITE_COLORS[color];
-
-                offctx.fillRect(dx, dy, 1, 1);
+				const fill =
+					palette?.[color] ?? SPRITE_COLORS[color];
+				
+				if (fill == null)
+					continue;
+				
+				offctx.fillStyle = fill;
+				offctx.fillRect(dx, dy, 1, 1);
             }
         }
 
@@ -204,15 +186,18 @@ function drawRotatedSprite(
     }
 
     // -------------------------------------
-    // DRAW CACHED SPRITE
+    // DRAW ONE GAME SQUARE
     // -------------------------------------
 
     ctx.drawImage(
         image,
         renderPixel(bx),
-        renderPixel(by)
+        renderPixel(by),
+        DISPLAY_BLOCK_PIXELS,
+        DISPLAY_BLOCK_PIXELS
     );
 }
+
 
 /* =========================================================
    DRAW SPRITE
@@ -269,13 +254,13 @@ function drawDungeon() {
 
             if (!isDungeonTileVisible(x, y)) {
 
-                ctx.fillStyle = COLORS[0];
+                ctx.fillStyle = SPRITE_COLORS[16];
 
                 ctx.fillRect(
                     renderPixel(bx),
                     renderPixel(by),
-                    BLOCK_PIXELS,
-                    BLOCK_PIXELS
+                    DISPLAY_BLOCK_PIXELS,
+                    DISPLAY_BLOCK_PIXELS
                 );
 
                 continue;
@@ -310,6 +295,7 @@ function drawDungeonObjects() {
         // -------------------------------------
 
         const isProjectile = obj.projectileType !== undefined;
+
         const x = obj[0];
         const y = obj[1];
         const type = obj[2];
@@ -409,6 +395,8 @@ function drawDungeonObjects() {
         );
     }
 }
+
+
 /* =========================================================
    7. PLAYER
 ========================================================= */
@@ -443,32 +431,97 @@ function drawPlayer() {
     );
 }
 
-
 /* =========================================================
    8. OVERWORLD
+
+   Forest neighbor bits:
+       North = 1
+       East  = 2
+       South = 4
+       West  = 8
+
+   Each entry contains:
+       [sprite ID, clockwise rotation]
 ========================================================= */
+
+const FOREST_TILE_LOOKUP = [
+    [SPRITE.FOREST_ISOLATED,  0], //  0: none
+    [SPRITE.FOREST_END,       0], //  1: N
+    [SPRITE.FOREST_END,       1], //  2: E
+    [SPRITE.FOREST_CORNER,    0], //  3: N E
+    [SPRITE.FOREST_END,       2], //  4: S
+    [SPRITE.FOREST_STRAIGHT,  0], //  5: N S
+    [SPRITE.FOREST_CORNER,    1], //  6: E S
+    [SPRITE.FOREST_THREE_WAY, 1], //  7: N E S
+    [SPRITE.FOREST_END,       3], //  8: W
+    [SPRITE.FOREST_CORNER,    3], //  9: N W
+    [SPRITE.FOREST_STRAIGHT,  1], // 10: E W
+    [SPRITE.FOREST_THREE_WAY, 0], // 11: N E W
+    [SPRITE.FOREST_CORNER,    2], // 12: S W
+    [SPRITE.FOREST_THREE_WAY, 3], // 13: N S W
+    [SPRITE.FOREST_THREE_WAY, 2], // 14: E S W
+    [SPRITE.FOREST_INTERIOR,  0]  // 15: N E S W
+];
+
 
 function cell(x, y) {
     return OVERWORLD_MAP[y][x];
 }
 
 
+function isOverworldForest(x, y) {
+    return OVERWORLD_MAP[y]?.[x]?.type === TYPE.FOREST;
+}
+
+
+function drawOverworldForest(x, y) {
+
+    const mask =
+        (isOverworldForest(x, y - 1) ? 1 : 0) |
+        (isOverworldForest(x + 1, y) ? 2 : 0) |
+        (isOverworldForest(x, y + 1) ? 4 : 0) |
+        (isOverworldForest(x - 1, y) ? 8 : 0);
+
+    const [spriteID, rotation] = FOREST_TILE_LOOKUP[mask];
+
+    drawRotatedSprite(
+        spriteID,
+        x,
+        y,
+        rotation
+    );
+}
+
+
 function drawOverworld() {
 
-    if (OVERWORLD_MAP.length === 0) {
+    if (OVERWORLD_MAP.length === 0)
         return;
-    }
 
     for (let y = 0; y < VIEW_H; y++) {
         for (let x = 0; x < VIEW_W; x++) {
 
             const c = cell(x, y);
 
-            // Background
             drawSprite(SPRITE.GRASS, x, y);
 
-            if (c.type === TYPE.GRASS)
+			// Special dungeon entrance over the grass background.
+			if (c.dungeon) {
+				const palette = c.sprite === SPRITE.CAVE
+					? { 4: PALETTES.BROWN }
+					: null;
+			
+				drawSprite(c.sprite, x, y, palette);
+				continue;
+			}
+			
+			if (c.type === TYPE.GRASS)
+				continue;
+
+            if (c.type === TYPE.FOREST) {
+                drawOverworldForest(x, y);
                 continue;
+            }
 
             const color =
                 MOUNTAIN_COLORS[c.type] ??
@@ -492,27 +545,30 @@ function drawOverworld() {
 
     drawCloudyMountain();
 
-    // Animated cabin
+    // Animated cabin.
     const cabinY = Math.floor(VIEW_H / 2);
 
     drawSprite(SPRITE.GRASS, 0, cabinY);
 
     drawSprite(
-        animationFrame === 0
-            ? SPRITE.CABIN_1
-            : SPRITE.CABIN_2,
+        (animationFrame & 1)
+            ? SPRITE.CABIN_2
+            : SPRITE.CABIN_1,
         0,
         cabinY
     );
 
-    // Overworld player
+    // Animated player with remembered facing direction.
     drawSprite(
-        SPRITE.PLAYER_1,
+        (animationFrame & 1)
+            ? SPRITE.PLAYER_2
+            : SPRITE.PLAYER_1,
         overworldPlayer.x,
-        overworldPlayer.y
+        overworldPlayer.y,
+        null,
+        overworldPlayer.facing === 1
     );
 }
-
 
 /* =========================================================
    9. CLOUDY MOUNTAIN
@@ -526,16 +582,18 @@ const CLOUDY_PEAK_FRAMES = [
     SPRITE.CLOUDY_PEAK_3
 ];
 
+
 function drawCloudyMountain() {
 
-    const x = VIEW_W - 2;
-    const y = Math.floor(VIEW_H / 2) - 1;
+	const x = TEST_DUNGEON_PLACEMENT ? 0 : VIEW_W - 2;
+	const y = Math.floor(VIEW_H / 2) +
+		(TEST_DUNGEON_PLACEMENT ? 1 : -1);
 
     const frame =
         Math.floor(performance.now() / 350) %
         CLOUDY_PEAK_FRAMES.length;
 
-    // Background
+    // Background.
     for (let dy = 0; dy < 2; dy++) {
         for (let dx = 0; dx < 2; dx++) {
 
@@ -547,28 +605,24 @@ function drawCloudyMountain() {
         }
     }
 
-    // Upper-left
     drawSprite(
         SPRITE.CLOUDY_UPPER_LEFT,
         x,
         y
     );
 
-    // Animated upper-right
     drawSprite(
         CLOUDY_PEAK_FRAMES[frame],
         x + 1,
         y
     );
 
-    // Lower-left
     drawSprite(
         SPRITE.CLOUDY_LOWER_LEFT,
         x,
         y + 1
     );
 
-    // Lower-right
     drawSprite(
         SPRITE.CLOUDY_LOWER_RIGHT,
         x + 1,
@@ -649,7 +703,6 @@ function drawPlayerVictory() {
 
     ctx.save();
 
-    // Darken game screen
     ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
 
     ctx.fillRect(
@@ -678,7 +731,7 @@ function drawPlayerVictory() {
         cy - spriteHeight / 2 - 12
     );
 
-    // Throne and seated player
+    // Throne and seated player.
     for (let y = 0; y < VICTORY_SPRITE.length; y++) {
         for (let x = 0; x < VICTORY_SPRITE[y].length; x++) {
 
@@ -700,7 +753,6 @@ function drawPlayerVictory() {
         }
     }
 
-    // Victory message
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = "bold 12px monospace";

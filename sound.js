@@ -260,7 +260,8 @@ const SOUND = {
     SPIDER:        15,
     BLOB:          16,
     WINGED_DRAGON: 17,
-    SNORING: 18
+    SNORING: 18,
+    BEAR:    19
 };
 
 
@@ -290,7 +291,8 @@ const SOUNDS = [
     [4, 1800, 850, 0.045, 0.16, 0.001, 0, 0, 0, 0.10, 0.035, 6, 0.065, 0.30], // 15 SPIDER
     [2, 180, 65, 0.420, 0.24, 0.090, 9, 45, 0, 0.75, 0.140], // 16 BLOB
     [4, 420, 110, 0.750, 0.28, 0.220, 2, 65, 0, 0.65, 0.250], // 17 WINGED_DRAGON
-    [4, 180, 75, 0.650, 0.20, 0.120, 5, 28, 0, 0.70, 0.180, 2, 0.075, 1.00] // 18 SNORING - low, raspy, rhythmic sleeping breath
+    [4, 180, 75, 0.650, 0.20, 0.120, 5, 28, 0, 0.70, 0.180, 2, 0.075, 1.00], // 18 SNORING - low, raspy, rhythmic sleeping breath
+    [3, 115, 48, 0.850, 0.25, 0.065, 24, 12, 0, 0.80, 0.280] // 19 BEAR — deep growl with a rough, wavering pitch.
 ];
 
 

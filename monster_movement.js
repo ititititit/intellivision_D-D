@@ -2,15 +2,20 @@
 "use strict";
 
 /* =========================================================
-   IDENTIFY MONSTER OBJECT
+   IDENTIFY MONSTER OR ASSIGNED CHARACTER
 ========================================================= */
 
 function isMonsterObject(obj) {
 
-    const objectID = obj[2];
+    if (obj.projectileType !== undefined)
+        return false;
 
-    switch (objectID) {
+    if (obj.behavior === "friendlyStanding")
+        return true;
 
+    switch (obj[2]) {
+
+        // Original monsters
         case OBJECT.BAT:
         case OBJECT.SNAKE:
         case OBJECT.DEMON:
@@ -19,6 +24,19 @@ function isMonsterObject(obj) {
         case OBJECT.SPIDER:
         case OBJECT.BLOB:
         case OBJECT.WINGED_DRAGON:
+
+        // Additional monsters and characters
+        case OBJECT.SKELETON:
+        case OBJECT.FLOATING_EYE:
+        case OBJECT.CRAB:
+        case OBJECT.GHOST:
+        case OBJECT.MEDUSA:
+        case OBJECT.BEAR:
+        case OBJECT.PRIESTESS:
+		case OBJECT.TALKING_DOOR:
+        case OBJECT.JEFF_CHOINSKI:
+        case OBJECT.JAMES_DUBAY:
+        case OBJECT.CALVIN:
             return true;
 
         default:
@@ -56,7 +74,7 @@ function isMonsterObject(obj) {
    VALIDATE MONSTER DESTINATION
 ========================================================= */
 
-function canMonsterMoveTo(x, y) {
+function canMonsterMoveTo(x, y, monster) {
 
     if (
         x < 0 ||
@@ -68,10 +86,26 @@ function canMonsterMoveTo(x, y) {
     }
 
     const block = decodeBlock(getWorldBlock(x, y)).block;
+    const spriteIndex = BLOCK_SPRITES[block];
 
-    return block === 1;
+    // All monsters are blocked by walls and water.
+    if (
+        is_wall.has(spriteIndex) ||
+        is_water.has(spriteIndex)
+    ) {
+        return false;
+    }
+
+    // Only flying monsters can move over pits.
+    if (
+        is_pit.has(spriteIndex) &&
+        !monster.canFly
+    ) {
+        return false;
+    }
+
+    return true;
 }
-
 
 /* =========================================================
    WANDER MONSTER
@@ -96,8 +130,8 @@ function wanderMonster(monster) {
         const x = monster[0] + dx;
         const y = monster[1] + dy;
 
-        if (!canMonsterMoveTo( x, y))
-            continue;
+		if (!canMonsterMoveTo(x, y, monster))
+			continue;
 
         if (
             x === monster.previousX &&
@@ -157,8 +191,8 @@ function chaseMonster(monster, player) {
         const x = monster[0] + mx;
         const y = monster[1] + my;
 
-        if (canMonsterMoveTo(x, y))
-            return { x, y };
+		if (canMonsterMoveTo(x, y, monster))
+			return { x, y };
     }
 
     // No direct route: wander if permitted
@@ -225,6 +259,10 @@ function shouldAwakenMonster(monster, player, isVisible) {
    Does not update monster grid position.
 ========================================================= */
 
+/* =========================================================
+   DETERMINE NEXT MONSTER ACTION
+========================================================= */
+
 function determineNextMonsterAction(
     monster,
     player,
@@ -232,14 +270,32 @@ function determineNextMonsterAction(
     now = performance.now()
 ) {
 
+    if (monster.state === "dead")
+        return null;
+
+    // Check assigned behavior before awakening or chasing.
+    if (monster.behavior === "friendlyStanding") {
+
+        monster.state = "standing";
+        return null;
+    }
+
+    // Charmed snakes wander instead of chasing.
+    if (
+        monster[2] === OBJECT.SNAKE &&
+        player.inventory.snakeCharmer
+    ) {
+        monster.state = "wandering";
+        monster.lastSeenTime = null;
+
+        return wanderMonster(monster);
+    }
+
     // -----------------------------------------
     // SLEEPING
     // -----------------------------------------
 
     if (monster.state === "sleeping") {
-
-        // Visible monsters awaken immediately.
-        // Hearing checks occur at fixed intervals.
 
         if (!isVisible) {
 
@@ -258,7 +314,6 @@ function determineNextMonsterAction(
             return null;
         }
 
-        // Awakened by sight or hearing
         monster.state =
             isVisible && monster.canChase
                 ? "chasing"
@@ -276,16 +331,10 @@ function determineNextMonsterAction(
         if (monster.canChase) {
 
             monster.state = "chasing";
-
-            return chaseMonster(
-                monster,
-                player
-            );
+            return chaseMonster(monster, player);
         }
 
-        // Monster sees player but cannot chase
         monster.state = "wandering";
-
         return wanderMonster(monster);
     }
 
@@ -300,15 +349,9 @@ function determineNextMonsterAction(
                 ? Infinity
                 : now - monster.lastSeenTime;
 
-        if (elapsed < monster.forgetTime) {
+        if (elapsed < monster.forgetTime)
+            return chaseMonster(monster, player);
 
-            return chaseMonster(
-                monster,
-                player
-            );
-        }
-
-        // Player forgotten
         monster.state = "sleeping";
         monster.lastSeenTime = null;
 
@@ -322,14 +365,11 @@ function determineNextMonsterAction(
     // WANDERING
     // -----------------------------------------
 
-    if (monster.state === "wandering") {
-
+    if (monster.state === "wandering")
         return wanderMonster(monster);
-    }
 
     return null;
 }
-
 
 /* =========================================================
    MONSTER MOVEMENT AND BEHAVIOR
@@ -375,6 +415,7 @@ const MONSTER_BEHAVIOR = {
         awakenCheckInterval: 1000,
         canChase: true,
         canWander: true,
+        canFly: true,
 
         health: 3,
         damage: 3,
@@ -398,6 +439,7 @@ const MONSTER_BEHAVIOR = {
         awakenCheckInterval: 1000,
         canChase: true,
         canWander: true,
+        canFly: false,
 
         health: 2,
         damage: 2,
@@ -421,6 +463,7 @@ const MONSTER_BEHAVIOR = {
         awakenCheckInterval: 1000,
         canChase: true,
         canWander: true,
+        canFly: false,
 
         health: 2,
         damage: 1,
@@ -444,6 +487,7 @@ const MONSTER_BEHAVIOR = {
         awakenCheckInterval: 1000,
         canChase: true,
         canWander: true,
+        canFly: false,
 
         health: 2,
         damage: 1,
@@ -467,6 +511,7 @@ const MONSTER_BEHAVIOR = {
         awakenCheckInterval: 1000,
         canChase: true,
         canWander: true,
+        canFly: false,
 
         health: 1,
         damage: 1,
@@ -490,6 +535,7 @@ const MONSTER_BEHAVIOR = {
         awakenCheckInterval: 1000,
         canChase: true,
         canWander: true,
+        canFly: true,
 
         health: 1,
         damage: 0,
@@ -513,6 +559,7 @@ const MONSTER_BEHAVIOR = {
         awakenCheckInterval: 1000,
         canChase: true,
         canWander: true,
+        canFly: false,
 
         health: 1,
         damage: 0,
@@ -536,6 +583,7 @@ const MONSTER_BEHAVIOR = {
         awakenCheckInterval: 1000,
         canChase: true,
         canWander: true,
+        canFly: false,
 
         health: Infinity,
         damage: 10,
@@ -550,6 +598,237 @@ const MONSTER_BEHAVIOR = {
         masksSounds: false,
         invulnerable: true
     },
+    
+        [OBJECT.SKELETON]: {
+        initialState: "sleeping",
+        speed: 1 / 10,
+        forgetTime: 10000,
+        hearingRange: 8,
+        awakenCheckInterval: 1000,
+        canChase: true,
+        canWander: true,
+        canFly: false,
+        health: 2,
+        damage: 1,
+        damageInterval: 700,
+        visibleInDark: false,
+        makesSleepingSound: false,
+        makesAwakeSound: false,
+        leavesTracks: false,
+        stealsArrows: false,
+        masksSounds: false,
+        invulnerable: false
+    },
+
+    [OBJECT.FLOATING_EYE]: {
+        initialState: "wandering",
+        speed: 1 / 12,
+        forgetTime: 15000,
+        hearingRange: 10,
+        awakenCheckInterval: 1000,
+        canChase: true,
+        canWander: true,
+        canFly: true,
+        health: 1,
+        damage: 1,
+        damageInterval: 800,
+        visibleInDark: true,
+        makesSleepingSound: false,
+        makesAwakeSound: false,
+        leavesTracks: false,
+        stealsArrows: false,
+        masksSounds: false,
+        invulnerable: false
+    },
+
+    [OBJECT.CRAB]: {
+        initialState: "wandering",
+        speed: 1 / 14,
+        forgetTime: 5000,
+        hearingRange: 5,
+        awakenCheckInterval: 1000,
+        canChase: true,
+        canWander: true,
+        canFly: false,
+        health: 2,
+        damage: 1,
+        damageInterval: 1000,
+        visibleInDark: false,
+        makesSleepingSound: false,
+        makesAwakeSound: false,
+        leavesTracks: false,
+        stealsArrows: false,
+        masksSounds: false,
+        invulnerable: false
+    },
+
+    [OBJECT.GHOST]: {
+        initialState: "wandering",
+        speed: 1 / 10,
+        forgetTime: 15000,
+        hearingRange: 10,
+        awakenCheckInterval: 1000,
+        canChase: true,
+        canWander: true,
+        canFly: true,
+        health: 2,
+        damage: 1,
+        damageInterval: 800,
+        visibleInDark: true,
+        makesSleepingSound: false,
+        makesAwakeSound: false,
+        leavesTracks: false,
+        stealsArrows: false,
+        masksSounds: false,
+        invulnerable: false
+    },
+
+    [OBJECT.MEDUSA]: {
+        initialState: "sleeping",
+        speed: 1 / 8,
+        forgetTime: 12000,
+        hearingRange: 10,
+        awakenCheckInterval: 1000,
+        canChase: true,
+        canWander: true,
+        canFly: false,
+        health: 3,
+        damage: 2,
+        damageInterval: 700,
+        visibleInDark: false,
+        makesSleepingSound: false,
+        makesAwakeSound: false,
+        leavesTracks: false,
+        stealsArrows: false,
+        masksSounds: false,
+        invulnerable: false
+    },
+
+    [OBJECT.BEAR]: {
+        initialState: "sleeping",
+        speed: 1 / 6,
+        forgetTime: 8000,
+        hearingRange: 8,
+        awakenCheckInterval: 1000,
+        canChase: true,
+        canWander: true,
+        canFly: false,
+        health: 3,
+        damage: 2,
+        damageInterval: 900,
+        visibleInDark: false,
+        makesSleepingSound: false,
+        makesAwakeSound: false,
+        leavesTracks: false,
+        stealsArrows: false,
+        masksSounds: false,
+        invulnerable: false
+    },
+
+    [OBJECT.PRIESTESS]: {
+        initialState: "sleeping",
+        speed: 1 / 8,
+        forgetTime: 10000,
+        hearingRange: 8,
+        awakenCheckInterval: 1000,
+        canChase: true,
+        canWander: true,
+        canFly: false,
+        health: 2,
+        damage: 1,
+        damageInterval: 800,
+        visibleInDark: false,
+        makesSleepingSound: false,
+        makesAwakeSound: false,
+        leavesTracks: false,
+        stealsArrows: false,
+        masksSounds: false,
+        invulnerable: false
+    },
+
+    [OBJECT.LADY_GODIVA]: {
+        initialState: "sleeping",
+        speed: 1 / 8,
+        forgetTime: 10000,
+        hearingRange: 8,
+        awakenCheckInterval: 1000,
+        canChase: true,
+        canWander: true,
+        canFly: false,
+        health: 2,
+        damage: 1,
+        damageInterval: 800,
+        visibleInDark: false,
+        makesSleepingSound: false,
+        makesAwakeSound: false,
+        leavesTracks: false,
+        stealsArrows: false,
+        masksSounds: false,
+        invulnerable: false
+    },
+
+    [OBJECT.JEFF_CHOINSKI]: {
+        initialState: "sleeping",
+        speed: 1 / 8,
+        forgetTime: 10000,
+        hearingRange: 8,
+        awakenCheckInterval: 1000,
+        canChase: true,
+        canWander: true,
+        canFly: false,
+        health: 2,
+        damage: 1,
+        damageInterval: 800,
+        visibleInDark: false,
+        makesSleepingSound: false,
+        makesAwakeSound: false,
+        leavesTracks: false,
+        stealsArrows: false,
+        masksSounds: false,
+        invulnerable: false
+    },
+
+    [OBJECT.JAMES_DUBAY]: {
+        initialState: "sleeping",
+        speed: 1 / 8,
+        forgetTime: 10000,
+        hearingRange: 8,
+        awakenCheckInterval: 1000,
+        canChase: true,
+        canWander: true,
+        canFly: false,
+        health: 2,
+        damage: 1,
+        damageInterval: 800,
+        visibleInDark: false,
+        makesSleepingSound: false,
+        makesAwakeSound: false,
+        leavesTracks: false,
+        stealsArrows: false,
+        masksSounds: false,
+        invulnerable: false
+    },
+
+    [OBJECT.CALVIN]: {
+        initialState: "sleeping",
+        speed: 1 / 8,
+        forgetTime: 10000,
+        hearingRange: 8,
+        awakenCheckInterval: 1000,
+        canChase: true,
+        canWander: true,
+        canFly: false,
+        health: 2,
+        damage: 1,
+        damageInterval: 800,
+        visibleInDark: false,
+        makesSleepingSound: false,
+        makesAwakeSound: false,
+        leavesTracks: false,
+        stealsArrows: false,
+        masksSounds: false,
+        invulnerable: false
+    },
 
     default: {
         initialState: "sleeping",
@@ -559,6 +838,7 @@ const MONSTER_BEHAVIOR = {
         awakenCheckInterval: 1000,
         canChase: true,
         canWander: true,
+        canFly: false,
 
         health: 1,
         damage: 1,
@@ -580,17 +860,14 @@ const MONSTER_BEHAVIOR = {
 /* =========================================================
    INITIALIZE MONSTER BEHAVIOR
 
-   Call after dungeon generation has populated
-   DUNGEON_OBJECTS.
-
-   Does not change monster positions.
+   Optional per-entity property:
+       behavior: "friendlyStanding"
 ========================================================= */
 
-function initializeMonsterBehavior() {
+function initializeMonsterBehavior(monsters = DUNGEON_OBJECTS) {
 
-    for (const monster of DUNGEON_OBJECTS) {
+    for (const monster of monsters) {
 
-        // Skip non-monster objects
         if (!isMonsterObject(monster))
             continue;
 
@@ -598,19 +875,27 @@ function initializeMonsterBehavior() {
             MONSTER_BEHAVIOR[monster[2]] ||
             MONSTER_BEHAVIOR.default;
 
-        monster.state = settings.initialState;
+        const standing =
+            monster.behavior === "friendlyStanding";
+
+        monster.friendly = standing;
+
+        monster.state = standing
+            ? "standing"
+            : settings.initialState;
 
         monster.previousX = null;
         monster.previousY = null;
-
         monster.lastSeenTime = null;
 
-        monster.speed = Math.min(
-            MAX_MONSTER_SPEED,
-            Math.max(0, settings.speed)
-        );
+        monster.speed = standing
+            ? 0
+            : Math.min(
+                MAX_MONSTER_SPEED,
+                Math.max(0, settings.speed)
+            );
 
-		monster.health = settings.health;
+        monster.health = settings.health;
         monster.forgetTime = settings.forgetTime;
         monster.hearingRange = settings.hearingRange;
 
@@ -618,15 +903,22 @@ function initializeMonsterBehavior() {
             settings.awakenCheckInterval;
 
         monster.nextAwakenCheckTime = 0;
+        monster.nextDamageTime = 0;
 
-        monster.canChase = settings.canChase;
-        monster.canWander = settings.canWander;
+        monster.canChase = standing
+            ? false
+            : settings.canChase;
+
+        monster.canWander = standing
+            ? false
+            : settings.canWander;
+
+		monster.canFly = settings.canFly ?? false;
 
         monster.offset_x = 0;
         monster.offset_y = 0;
     }
 }
-
 
 /* =========================================================
    UPDATE MONSTER MOVEMENT
@@ -651,6 +943,10 @@ function approachZero(value, speed) {
     return value - Math.sign(value) * speed;
 }
 
+/* =========================================================
+   CHECK MONSTER CONTACT DAMAGE
+========================================================= */
+
 function checkMonsterPlayerDamage(
     monster,
     player,
@@ -658,14 +954,26 @@ function checkMonsterPlayerDamage(
 ) {
 
     if (player.health <= 0) {
+
         player.dead = true;
         return;
     }
 
     if (
-        player.dead || player.won ||
+        player.dead ||
+        player.won ||
         monster.projectileType !== undefined ||
-        monster.state === "dead"
+        monster.state === "dead" ||
+        monster.friendly ||
+        monster.behavior === "friendlyStanding"
+    ) {
+        return;
+    }
+
+    // Charmed snakes cannot hurt the player.
+    if (
+        monster[2] === OBJECT.SNAKE &&
+        player.inventory.snakeCharmer
     ) {
         return;
     }
@@ -677,10 +985,12 @@ function checkMonsterPlayerDamage(
     if (settings.damage <= 0)
         return;
 
-    const monsterX = monster[0] + monster.offset_x;
-    const monsterY = monster[1] + monster.offset_y;
+    const monsterX =
+        monster[0] + (monster.offset_x ?? 0);
 
-    // Check contact with player.
+    const monsterY =
+        monster[1] + (monster.offset_y ?? 0);
+
     if (
         Math.abs(monsterX - player.x) >= 0.5 ||
         Math.abs(monsterY - player.y) >= 0.5
@@ -688,26 +998,24 @@ function checkMonsterPlayerDamage(
         return;
     }
 
-    // Damage cooldown for this monster.
     if (now < (monster.nextDamageTime ?? 0))
         return;
 
     monster.nextDamageTime =
         now + settings.damageInterval;
 
-    player.health = Math.max(
-        0,
-        player.health - settings.damage
-    );
+    const damage = player.inventory.armor
+        ? settings.damage / 3
+        : settings.damage;
+
+    player.health = Math.max(0, player.health - damage);
 
     player.dead = player.health === 0;
 
-	if( player.dead ){
-	    playSound(SOUND.DEATH, 1);
-	}
-	else{
-	    playSound(SOUND.SWORD, 1);
-	}
+    if (player.dead)
+        playSound(SOUND.DEATH, 1);
+    else
+        playSound(SOUND.SWORD, 1);
 }
 
 function updateMonsterMovement(

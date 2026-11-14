@@ -1,0 +1,2567 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Modern Dungeon Room Editor</title>
+
+<style>
+:root {
+    color-scheme: dark;
+    --background: #101619;
+    --panel: #1b2529;
+    --border: #40535a;
+    --text: #e4ece7;
+    --muted: #a9bbb5;
+    --accent: #e1bc71;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font: 14px/1.45 system-ui, sans-serif;
+}
+
+header {
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--border);
+}
+
+h1 {
+    margin: 0;
+    font-size: 23px;
+    color: var(--accent);
+}
+
+h2 {
+    margin: 0 0 10px;
+    font-size: 16px;
+}
+
+main {
+    display: grid;
+    grid-template-columns: 260px minmax(350px, 1fr) 390px;
+    gap: 14px;
+    padding: 14px;
+    max-width: 1700px;
+    margin: auto;
+}
+
+aside,
+section {
+    padding: 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    min-width: 0;
+}
+
+label {
+    display: block;
+    margin: 10px 0 4px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+input,
+select,
+textarea,
+button {
+    font: inherit;
+    color: var(--text);
+    background: #111b20;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 7px;
+    max-width: 100%;
+}
+
+input,
+select,
+textarea {
+    width: 100%;
+}
+
+button {
+    cursor: pointer;
+}
+
+button:hover,
+button.active {
+    border-color: var(--accent);
+    background: #394239;
+}
+
+textarea {
+    font: 12px/1.5 monospace;
+    resize: vertical;
+}
+
+.row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin: 8px 0;
+}
+
+.row > * {
+    flex: 1;
+}
+
+.small {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.palette {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+    max-height: 330px;
+    overflow-y: auto;
+}
+
+.palette button {
+    padding: 3px;
+    font-size: 11px;
+}
+
+.palette canvas {
+    width: 40px;
+    height: 40px;
+    display: block;
+    margin: auto;
+    image-rendering: pixelated;
+}
+
+#roomCanvas {
+    display: block;
+    width: 100%;
+    max-width: 630px;
+    margin: 12px auto;
+    background: #111;
+    image-rendering: pixelated;
+    touch-action: none;
+}
+
+.entry {
+    display: flex;
+    gap: 5px;
+    margin: 5px 0;
+}
+
+.entry button:first-child {
+    flex: 1;
+    text-align: left;
+}
+
+.card {
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 10px;
+    margin: 10px 0;
+}
+
+.check {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.check input {
+    width: auto;
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 16px 0;
+}
+
+#status {
+    padding: 12px 22px;
+    color: var(--accent);
+    border-top: 1px solid var(--border);
+    white-space: pre-wrap;
+}
+
+#testLog {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+details {
+    margin: 12px 0;
+}
+
+summary {
+    cursor: pointer;
+    color: var(--accent);
+}
+
+@media (max-width: 1150px) {
+    main {
+        grid-template-columns: 240px 1fr;
+    }
+
+    #inspector {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 700px) {
+    main {
+        display: block;
+    }
+
+    aside,
+    section {
+        margin-bottom: 12px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>Modern Dungeon Room Editor</h1>
+    <div class="small">
+        9 × 9 rooms · animations · triggers · objects · monsters · characters
+    </div>
+</header>
+
+<main>
+    <aside>
+        <h2>Room definitions</h2>
+
+        <label for="roomPicker">Existing room</label>
+        <select id="roomPicker"></select>
+
+        <div class="row">
+            <button id="openRoom">Open room</button>
+            <button id="newRoom">New room</button>
+        </div>
+
+        <label for="roomID">Room ID</label>
+        <input id="roomID" type="number" min="0" max="15" value="0">
+
+        <label for="roomName">Room name</label>
+        <input id="roomName">
+
+        <label for="population">Population</label>
+        <select id="population">
+            <option value="">Normal dungeon population</option>
+            <option value="defined">Only authored population</option>
+        </select>
+
+        <button id="keepRoom" style="margin-top:12px">
+            Keep room in working set
+        </button>
+
+        <p class="small">
+            Keep your edits before opening another room.
+            Download the definitions to save them to disk.
+        </p>
+
+        <hr>
+
+        <h2>Edit layer</h2>
+
+        <select id="layer">
+            <option value="tiles">Terrain</option>
+            <option value="animatedCells">Animated tiles</option>
+            <option value="triggers">Triggers</option>
+            <option value="objects">Objects</option>
+            <option value="monsters">Monsters / characters</option>
+        </select>
+
+        <label for="blockID">Terrain block ID</label>
+        <input id="blockID" type="number" min="0" max="63" value="1">
+
+        <label for="blockRotation">Terrain orientation</label>
+        <select id="blockRotation">
+            <option value="0">North</option>
+            <option value="1">East</option>
+            <option value="2">South</option>
+            <option value="3">West</option>
+        </select>
+
+        <details open>
+            <summary>Terrain palette</summary>
+            <div id="terrainPalette" class="palette"></div>
+        </details>
+
+        <details>
+            <summary>Object / monster palette</summary>
+            <p class="small">
+                Select an object or monster entry, then choose its artwork.
+            </p>
+            <div id="objectPalette" class="palette"></div>
+        </details>
+
+        <hr>
+
+        <div class="row">
+            <button id="saveDraft">Save browser draft</button>
+            <button id="loadDraft">Load draft</button>
+        </div>
+    </aside>
+
+    <section>
+        <div class="row">
+            <div>
+                <h2>Room canvas</h2>
+                <div id="selection" class="small"></div>
+            </div>
+
+            <div>
+                <label for="previewRotation">Preview rotation</label>
+                <select id="previewRotation">
+                    <option value="0">North</option>
+                    <option value="1">East</option>
+                    <option value="2">South</option>
+                    <option value="3">West</option>
+                </select>
+            </div>
+        </div>
+
+        <canvas id="roomCanvas" width="576" height="576"></canvas>
+
+        <div class="row">
+            <div>
+                <label for="localX">Local X</label>
+                <input id="localX" type="number" min="0" max="8" value="4">
+            </div>
+
+            <div>
+                <label for="localY">Local Y</label>
+                <input id="localY" type="number" min="0" max="8" value="4">
+            </div>
+
+            <button id="selectSquare">Select square</button>
+            <button id="paintSquare">Paint terrain</button>
+        </div>
+
+        <p class="small">
+            Terrain: click or drag to paint.
+            Other layers: click a square to select its entry.
+            Preview rotation never changes saved coordinates.
+        </p>
+
+        <hr>
+
+        <h2>Room animation</h2>
+
+        <label class="check">
+            <input id="hasAnimation" type="checkbox">
+            Enable room animation
+        </label>
+
+        <div id="animationForm"></div>
+
+        <div class="row">
+            <button id="runUp">Run ↑</button>
+            <button id="runDown">Run ↓</button>
+            <button id="stopAnimation">Stop</button>
+            <button id="resetTest">Reset test</button>
+        </div>
+
+        <label for="counter">
+            Preview counter: <span id="counterValue">0</span>
+        </label>
+        <input id="counter" type="range" min="0" max="1" value="0">
+
+        <hr>
+
+        <h2>Trigger test</h2>
+
+        <div class="row">
+            <button id="testStep">Step on selected</button>
+            <button id="testArrow">Arrow at selected</button>
+        </div>
+
+        <label for="namedTrigger">Named trigger</label>
+        <select id="namedTrigger"></select>
+
+        <button id="testNamed" style="margin-top:8px">
+            Fire named trigger
+        </button>
+
+        <p class="small">
+            Tests use one instance of each room definition.
+            Knowledge actions are logged.
+            Monster AI and the dialogue interface do not run.
+        </p>
+
+        <pre id="testLog" class="small"></pre>
+    </section>
+
+    <aside id="inspector">
+        <h2 id="entryHeading">Terrain</h2>
+
+        <div id="entryList"></div>
+
+        <button id="addEntry">Add at selected square</button>
+
+        <div id="entryForm"></div>
+
+        <hr>
+
+        <h2>Import / export</h2>
+
+        <div class="row">
+            <button id="showJSON">Show room JSON</button>
+            <button id="showJS">Show room JavaScript</button>
+        </div>
+
+        <textarea id="dataText" rows="16" spellcheck="false"></textarea>
+
+        <div class="row">
+            <button id="importJSON">Import JSON</button>
+            <button id="copyText">Copy text</button>
+        </div>
+
+        <div class="row">
+            <button id="downloadDefinitions">
+                Download room_definitions.js
+            </button>
+        </div>
+
+        <div class="row">
+            <button id="showAllJSON">Show all rooms JSON</button>
+            <button id="downloadJSON">Download all rooms JSON</button>
+        </div>
+
+        <label for="openJSON">Open JSON file</label>
+        <input id="openJSON" type="file" accept=".json,application/json">
+
+        <details>
+            <summary>Complete extensions JSON</summary>
+
+            <p class="small">
+                Edit additional room fields here.
+                Existing fields are preserved.
+            </p>
+
+            <textarea id="extensionsJSON" rows="14" spellcheck="false"></textarea>
+            <button id="applyExtensions">Apply extensions</button>
+        </details>
+    </aside>
+</main>
+
+<div id="status" role="status">Loading definitions…</div>
+
+<!-- Shared game data only. Do not load dungeon_initialization.js. -->
+
+<script src="sound.js"></script>
+<script src="sprite_definitions.js"></script>
+<script src="dungeon_definitions.js"></script>
+<script src="room_definitions.js"></script>
+
+<script>
+"use strict";
+
+(() => {
+    const $ = id => document.getElementById(id);
+    const copy = value => structuredClone(value);
+
+    function status(message) {
+        $("status").textContent = message;
+    }
+
+    function safely(action) {
+        try {
+            return action();
+        } catch (error) {
+            status(error.message);
+            console.error(error);
+        }
+    }
+
+    if (
+        typeof SPRITE === "undefined" ||
+        typeof SPRITES === "undefined" ||
+        typeof SPRITE_COLORS === "undefined" ||
+        typeof BLOCK_SPRITES === "undefined" ||
+        typeof OBJECT === "undefined" ||
+        typeof OBJECT_DEFS === "undefined" ||
+        typeof ROOMS === "undefined" ||
+        typeof ROOM_EXTENSIONS === "undefined"
+    ) {
+        status(
+            "Required definitions did not load. Check sound.js, " +
+            "sprite_definitions.js, dungeon_definitions.js, " +
+            "and room_definitions.js."
+        );
+        return;
+    }
+
+    const canvas = $("roomCanvas");
+    const context = canvas.getContext("2d");
+
+    context.imageSmoothingEnabled = false;
+
+    const spriteCanvas = document.createElement("canvas");
+    spriteCanvas.width = 16;
+    spriteCanvas.height = 16;
+
+    const spriteContext = spriteCanvas.getContext("2d");
+
+    const workingRooms = copy(ROOMS);
+    const workingExtensions = copy(ROOM_EXTENSIONS);
+
+    const objectChoices = Object.entries(OBJECT).map(
+        ([name, value]) => [String(value), value + ": " + name]
+    );
+
+    const spriteNames = new Map(
+        Object.entries(SPRITE).map(([name, value]) => [value, name])
+    );
+
+    const rotations = [
+        ["0", "North"],
+        ["1", "East"],
+        ["2", "South"],
+        ["3", "West"]
+    ];
+
+    const layerNames = {
+        tiles: "Terrain",
+        animatedCells: "Animated tiles",
+        triggers: "Triggers",
+        objects: "Objects",
+        monsters: "Monsters / characters"
+    };
+
+    const actionNames = {
+        startAnimation: "Start animation",
+        stopAnimation: "Stop animation",
+        changeTile: "Change tile",
+        changeObject: "Change object",
+        depositObject: "Deposit object",
+        depositMonster: "Deposit monster",
+        addKnowledge: "Add knowledge",
+        fireTrigger: "Fire named trigger"
+    };
+
+    let model;
+    let selected = { x: 4, y: 4 };
+    let active = -1;
+    let dragging = false;
+    let testRooms = new Map();
+
+    function integer(value, min, max, label) {
+        if (
+            !Number.isSafeInteger(value) ||
+            value < min ||
+            value > max
+        ) {
+            throw new Error(
+                label + " must be an integer from " + min + " to " + max
+            );
+        }
+    }
+
+    function position(entry) {
+        integer(entry.x, 0, 8, "Local X");
+        integer(entry.y, 0, 8, "Local Y");
+    }
+
+    function rotate(x, y, turns) {
+        for (let i = 0; i < (turns & 3); i++) {
+            [x, y] = [8 - y, x];
+        }
+
+        return { x, y };
+    }
+
+    function freshRoom(id = 0) {
+        return {
+            roomID: id,
+            name: "Untitled room",
+
+            tiles: Array.from({ length: 81 }, (_, index) => {
+                const x = index % 9;
+                const y = Math.floor(index / 9);
+
+                return x > 0 && x < 8 && y > 0 && y < 8 ? 1 : 0;
+            }),
+
+            extensions: {}
+        };
+    }
+
+    function defaultAnimation() {
+        return {
+            min: 0,
+            max: 4,
+            counter: 0,
+            direction: 1,
+            running: false,
+            mode: "once",
+            tickInterval: 350
+        };
+    }
+
+    function normalize(data) {
+        const result = copy(data);
+
+        result.roomID ??= 0;
+        result.extensions ??= {};
+        result.name ??= result.extensions.name || "Untitled room";
+
+        for (const cell of result.extensions.animatedCells || []) {
+            cell.rotation ??= 0;
+            cell.offset ??= 0;
+            cell.sampling ??= "clamp";
+        }
+
+        for (const trigger of result.extensions.triggers || []) {
+            if (typeof trigger.activation === "string") {
+                trigger.activation = [trigger.activation];
+            }
+
+            trigger.activation ??= [];
+            trigger.actions ??= [];
+            trigger.once ??= false;
+            trigger.enabled ??= true;
+        }
+
+        return result;
+    }
+
+    function validateAction(action) {
+        if (
+            !action ||
+            typeof action !== "object" ||
+            typeof action.type !== "string" ||
+            !action.type
+        ) {
+            throw new Error("An action needs a type.");
+        }
+
+        if (action.type === "fireTrigger") {
+            if (
+                typeof action.id !== "string" ||
+                !action.id.trim()
+            ) {
+                throw new Error("fireTrigger needs a target ID.");
+            }
+        }
+
+        if (
+            action.type === "startAnimation" &&
+            action.direction !== undefined &&
+            ![1, -1].includes(action.direction)
+        ) {
+            throw new Error("Animation direction must be 1 or -1.");
+        }
+
+        if ([
+            "changeTile",
+            "changeObject",
+            "depositObject",
+            "depositMonster"
+        ].includes(action.type)) {
+            position(action);
+
+            integer(
+                action.rotation ?? 0,
+                0,
+                3,
+                "Action rotation"
+            );
+
+            if (action.type === "changeTile") {
+                integer(action.blockID, 0, 63, "Block ID");
+            } else {
+                integer(action.value, 0, 1000000, "Object value");
+            }
+
+            if (action.type === "changeObject") {
+                integer(
+                    action.fromValue,
+                    0,
+                    1000000,
+                    "Original object value"
+                );
+            }
+        }
+    }
+
+    function validateRoom(room) {
+        integer(room.roomID, 0, 15, "Room ID");
+
+        if (
+            typeof room.name !== "string" ||
+            !Array.isArray(room.tiles) ||
+            room.tiles.length !== 81
+        ) {
+            throw new Error("A room needs a name and exactly 81 tiles.");
+        }
+
+        if (
+            !room.extensions ||
+            typeof room.extensions !== "object" ||
+            Array.isArray(room.extensions)
+        ) {
+            throw new Error("Extensions must be an object.");
+        }
+
+        room.tiles.forEach(value =>
+            integer(value, 0, 255, "Encoded tile")
+        );
+
+        const extensions = room.extensions;
+        const animation = extensions.animation;
+
+        if (animation) {
+            for (const key of ["min", "max", "counter"]) {
+                integer(animation[key], -1000000, 1000000, key);
+            }
+
+            if (
+                animation.min > animation.max ||
+                animation.counter < animation.min ||
+                animation.counter > animation.max ||
+                ![1, -1].includes(animation.direction) ||
+                !["once", "pingPong"].includes(animation.mode) ||
+                typeof animation.running !== "boolean" ||
+                !Number.isFinite(animation.tickInterval) ||
+                animation.tickInterval < 1
+            ) {
+                throw new Error("Invalid animation controller.");
+            }
+        }
+
+        const triggerIDs = new Set();
+
+        for (const layer of [
+            "animatedCells",
+            "triggers",
+            "objects",
+            "monsters"
+        ]) {
+            if (
+                extensions[layer] !== undefined &&
+                !Array.isArray(extensions[layer])
+            ) {
+                throw new Error(layer + " must be an array.");
+            }
+
+            for (const entry of extensions[layer] || []) {
+                position(entry);
+
+                if (layer === "animatedCells") {
+                    if (!animation) {
+                        throw new Error(
+                            "Animated tiles need an animation controller."
+                        );
+                    }
+
+                    integer(entry.rotation, 0, 3, "Cell rotation");
+                    integer(entry.offset, -1000000, 1000000, "Offset");
+
+                    if (
+                        !Array.isArray(entry.pattern) ||
+                        !entry.pattern.length
+                    ) {
+                        throw new Error("Animation pattern cannot be empty.");
+                    }
+
+                    entry.pattern.forEach(value =>
+                        integer(value, 0, 63, "Pattern block ID")
+                    );
+
+                    if (!["clamp", "wrap"].includes(entry.sampling)) {
+                        throw new Error("Sampling must be clamp or wrap.");
+                    }
+                }
+
+                if (layer === "objects" || layer === "monsters") {
+                    integer(entry.value, 0, 1000000, "Object value");
+                    integer(entry.rotation ?? 0, 0, 3, "Rotation");
+                }
+
+                if (layer === "triggers") {
+                    if (
+                        !Array.isArray(entry.activation) ||
+                        entry.activation.some(
+                            value => !["step", "arrow"].includes(value)
+                        )
+                    ) {
+                        throw new Error(
+                            "Activation must contain step/arrow, or be empty."
+                        );
+                    }
+
+                    if (
+                        typeof entry.once !== "boolean" ||
+                        typeof entry.enabled !== "boolean" ||
+                        !Array.isArray(entry.actions)
+                    ) {
+                        throw new Error("Invalid trigger definition.");
+                    }
+
+                    if (entry.id !== undefined) {
+                        if (
+                            typeof entry.id !== "string" ||
+                            !entry.id.trim() ||
+                            triggerIDs.has(entry.id)
+                        ) {
+                            throw new Error(
+                                "Trigger IDs must be nonempty and unique in the room."
+                            );
+                        }
+
+                        triggerIDs.add(entry.id);
+                    }
+
+                    entry.actions.forEach(validateAction);
+                }
+            }
+        }
+
+        return room;
+    }
+
+    function button(parent, text, action) {
+        const element = document.createElement("button");
+
+        element.type = "button";
+        element.textContent = text;
+        element.onclick = () => safely(action);
+
+        parent.append(element);
+
+        return element;
+    }
+
+    function field(parent, label, type, value, change, choices = []) {
+        const labelElement = document.createElement("label");
+        labelElement.textContent = label;
+
+        const element = document.createElement(
+            type === "select" ? "select" :
+            type === "textarea" ? "textarea" :
+            "input"
+        );
+
+        if (type === "select") {
+            const options = [...choices];
+
+            if (!options.some(option =>
+                String(option[0]) === String(value)
+            )) {
+                options.unshift([String(value ?? ""), String(value ?? "")]);
+            }
+
+            for (const [optionValue, text] of options) {
+                const option = document.createElement("option");
+
+                option.value = optionValue;
+                option.textContent = text;
+
+                element.append(option);
+            }
+        } else if (type !== "textarea") {
+            element.type = type;
+        }
+
+        if (type === "checkbox") {
+            element.checked = Boolean(value);
+        } else {
+            element.value = value ?? "";
+        }
+
+        element.setAttribute("aria-label", label);
+
+        if (type === "textarea") {
+            element.rows = 7;
+            element.spellcheck = false;
+        }
+
+        element.onchange = () => safely(() => change(
+            type === "checkbox" ? element.checked :
+            type === "number" ? Number(element.value) :
+            element.value
+        ));
+
+        parent.append(labelElement, element);
+
+        return element;
+    }
+
+    function mutate(change) {
+        const previous = copy(model);
+
+        try {
+            change();
+            model = normalize(model);
+            validateRoom(model);
+        } catch (error) {
+            model = previous;
+            renderForms();
+            throw error;
+        }
+
+        resetTest();
+        renderForms();
+        status("Updated.");
+    }
+
+    function drawSprite(target, spriteID, x, y, size, turns = 0) {
+        const pixels = SPRITES[spriteID];
+
+        if (!pixels) {
+            return;
+        }
+
+        spriteContext.clearRect(0, 0, 16, 16);
+
+        for (let py = 0; py < 16; py++) {
+            for (let px = 0; px < 16; px++) {
+                const color = SPRITE_COLORS[pixels[py * 16 + px]];
+
+                if (!color) {
+                    continue;
+                }
+
+                let rx = px;
+                let ry = py;
+
+                for (let turn = 0; turn < (turns & 3); turn++) {
+                    [rx, ry] = [15 - ry, rx];
+                }
+
+                spriteContext.fillStyle = color;
+                spriteContext.fillRect(rx, ry, 1, 1);
+            }
+        }
+
+        target.imageSmoothingEnabled = false;
+        target.drawImage(spriteCanvas, x, y, size, size);
+    }
+
+    function thumbnail(spriteID) {
+        const result = document.createElement("canvas");
+
+        result.width = 40;
+        result.height = 40;
+
+        drawSprite(result.getContext("2d"), spriteID, 0, 0, 40);
+
+        return result;
+    }
+
+    function buildPalettes() {
+        BLOCK_SPRITES.forEach((spriteID, blockID) => {
+            if (!SPRITES[spriteID]) {
+                return;
+            }
+
+            const element = button(
+                $("terrainPalette"),
+                "",
+                () => {
+                    $("blockID").value = blockID;
+                    $("layer").value = "tiles";
+                    active = -1;
+                    renderEntryList();
+                }
+            );
+
+            element.title =
+                blockID + ": " + (spriteNames.get(spriteID) || "Terrain");
+
+            const label = document.createElement("div");
+            label.textContent = blockID;
+
+            element.append(thumbnail(spriteID), label);
+        });
+
+        OBJECT_DEFS.forEach((definition, objectID) => {
+            if (!definition || !SPRITES[definition[0]]) {
+                return;
+            }
+
+            const element = button(
+                $("objectPalette"),
+                "",
+                () => {
+                    const layer = $("layer").value;
+                    const entry = model.extensions[layer]?.[active];
+
+                    if (
+                        !["objects", "monsters"].includes(layer) ||
+                        !entry
+                    ) {
+                        throw new Error(
+                            "Select an object or monster entry first."
+                        );
+                    }
+
+                    mutate(() => entry.value = objectID);
+                }
+            );
+
+            element.title =
+                objectChoices.find(choice =>
+                    Number(choice[0]) === objectID
+                )?.[1] || String(objectID);
+
+            const label = document.createElement("div");
+            label.textContent = objectID;
+
+            element.append(thumbnail(definition[0]), label);
+        });
+    }
+
+    function refreshRoomPicker() {
+        $("roomPicker").replaceChildren();
+
+        workingRooms.forEach((tiles, id) => {
+            if (!tiles) {
+                return;
+            }
+
+            const option = document.createElement("option");
+
+            option.value = id;
+            option.textContent =
+                id + ": " + (workingExtensions[id]?.name || "Room " + id);
+
+            $("roomPicker").append(option);
+        });
+    }
+
+    function loadRoom(data) {
+        const next = normalize(data);
+        validateRoom(next);
+
+        model = next;
+        active = -1;
+        selected = { x: 4, y: 4 };
+
+        $("roomID").value = model.roomID;
+        $("roomName").value = model.name;
+
+        $("population").value =
+            model.extensions.population === "defined" ? "defined" : "";
+
+        renderForms();
+        resetTest();
+
+        status("Loaded room " + model.roomID + ": " + model.name);
+    }
+
+    function exportRoom() {
+        const result = normalize(model);
+
+        result.extensions.name = result.name;
+
+        validateRoom(result);
+
+        return result;
+    }
+
+    function keepRoom() {
+        const room = exportRoom();
+
+        while (workingRooms.length < room.roomID) {
+            workingRooms.push(freshRoom().tiles);
+        }
+
+        workingRooms[room.roomID] = copy(room.tiles);
+        workingExtensions[room.roomID] = copy(room.extensions);
+
+        refreshRoomPicker();
+        $("roomPicker").value = room.roomID;
+
+        status("Room kept in the working set.");
+    }
+
+    function exportCollection() {
+        keepRoom();
+
+        return {
+            format: "dungeon-rooms-v2",
+            rooms: copy(workingRooms),
+            extensions: copy(workingExtensions)
+        };
+    }
+
+    function renderAnimationForm() {
+        const root = $("animationForm");
+        root.replaceChildren();
+
+        const animation = model.extensions.animation;
+
+        $("hasAnimation").checked = Boolean(animation);
+
+        if (!animation) {
+            return;
+        }
+
+        for (const [key, label] of [
+            ["min", "Minimum"],
+            ["max", "Maximum"],
+            ["counter", "Initial counter"],
+            ["tickInterval", "Tick interval (ms)"]
+        ]) {
+            field(root, label, "number", animation[key], value =>
+                mutate(() => animation[key] = value)
+            );
+        }
+
+        field(
+            root,
+            "Initial direction",
+            "select",
+            animation.direction,
+            value => mutate(() => animation.direction = Number(value)),
+            [["1", "Up"], ["-1", "Down"]]
+        );
+
+        field(
+            root,
+            "Endpoint behavior",
+            "select",
+            animation.mode,
+            value => mutate(() => animation.mode = value),
+            [["once", "Stop"], ["pingPong", "Reverse continuously"]]
+        );
+
+        field(
+            root,
+            "Initially running",
+            "checkbox",
+            animation.running,
+            value => mutate(() => animation.running = value)
+        );
+    }
+
+    function renderEntryList() {
+        const layer = $("layer").value;
+        const root = $("entryList");
+
+        root.replaceChildren();
+        $("entryHeading").textContent = layerNames[layer];
+        $("addEntry").disabled = layer === "tiles";
+
+        for (const [index, entry] of
+            (model.extensions[layer] || []).entries()
+        ) {
+            const row = document.createElement("div");
+            row.className = "entry";
+
+            const description =
+                layer === "triggers"
+                    ? entry.id || "Unnamed trigger"
+                    : layer === "animatedCells"
+                        ? entry.pattern.join(" → ")
+                        : entry.name || "Object " + entry.value;
+
+            const select = button(
+                row,
+                "(" + entry.x + ", " + entry.y + ") " + description,
+                () => {
+                    active = index;
+                    selected = { x: entry.x, y: entry.y };
+                    renderEntryList();
+                    draw();
+                }
+            );
+
+            select.classList.toggle("active", index === active);
+
+            button(row, "×", () => mutate(() => {
+                model.extensions[layer].splice(index, 1);
+                active = -1;
+            }));
+
+            root.append(row);
+        }
+
+        renderEntryForm();
+    }
+
+    function newAction(type) {
+        switch (type) {
+            case "startAnimation":
+                return { type, direction: 1 };
+
+            case "stopAnimation":
+                return { type };
+
+            case "fireTrigger":
+                return {
+                    type,
+                    id: "forgotten_bridge_extend"
+                };
+
+            case "changeTile":
+                return {
+                    type,
+                    x: selected.x,
+                    y: selected.y,
+                    blockID: 1,
+                    rotation: 0
+                };
+
+            case "changeObject":
+                return {
+                    type,
+                    x: selected.x,
+                    y: selected.y,
+                    fromValue: OBJECT.QUIVER,
+                    value: OBJECT.QUIVER
+                };
+
+            case "depositObject":
+            case "depositMonster":
+                return {
+                    type,
+                    x: selected.x,
+                    y: selected.y,
+                    value: type === "depositMonster"
+                        ? OBJECT.SNAKE
+                        : OBJECT.QUIVER
+                };
+
+            case "addKnowledge":
+                return {
+                    type,
+                    scope: "global",
+                    mnemonics: ["switch_activated"]
+                };
+
+            default:
+                return { type };
+        }
+    }
+
+    function renderActions(root, trigger) {
+        trigger.actions.forEach((action, index) => {
+            const card = document.createElement("div");
+            card.className = "card";
+
+            field(
+                card,
+                "Action " + (index + 1),
+                "select",
+                action.type,
+                value => mutate(() =>
+                    trigger.actions[index] = newAction(value)
+                ),
+                Object.entries(actionNames)
+            );
+
+            const change = (key, value) =>
+                mutate(() => action[key] = value);
+
+            if (action.type === "fireTrigger") {
+                field(
+                    card,
+                    "Target trigger ID",
+                    "text",
+                    action.id,
+                    value => change("id", value.trim())
+                );
+            }
+
+            if (action.type === "startAnimation") {
+                field(
+                    card,
+                    "Direction",
+                    "select",
+                    action.direction ?? 1,
+                    value => change("direction", Number(value)),
+                    [["1", "Up"], ["-1", "Down"]]
+                );
+            }
+
+            if ([
+                "changeTile",
+                "changeObject",
+                "depositObject",
+                "depositMonster"
+            ].includes(action.type)) {
+                for (const key of ["x", "y"]) {
+                    field(
+                        card,
+                        "Target local " + key.toUpperCase(),
+                        "number",
+                        action[key],
+                        value => change(key, value)
+                    );
+                }
+            }
+
+            if (action.type === "changeTile") {
+                field(
+                    card,
+                    "Block ID",
+                    "number",
+                    action.blockID,
+                    value => change("blockID", value)
+                );
+
+                field(
+                    card,
+                    "Orientation",
+                    "select",
+                    action.rotation ?? 0,
+                    value => change("rotation", Number(value)),
+                    rotations
+                );
+            }
+
+            if (action.type === "changeObject") {
+                field(
+                    card,
+                    "Find object",
+                    "select",
+                    action.fromValue,
+                    value => change("fromValue", Number(value)),
+                    objectChoices
+                );
+            }
+
+            if ([
+                "changeObject",
+                "depositObject",
+                "depositMonster"
+            ].includes(action.type)) {
+                field(
+                    card,
+                    "Object / monster value",
+                    "select",
+                    action.value,
+                    value => change("value", Number(value)),
+                    objectChoices
+                );
+            }
+
+            const json = field(
+                card,
+                "Complete action JSON",
+                "textarea",
+                JSON.stringify(action, null, 2),
+                () => {}
+            );
+
+            button(card, "Apply action JSON", () => {
+                const next = JSON.parse(json.value);
+                validateAction(next);
+
+                mutate(() => trigger.actions[index] = next);
+            });
+
+            const controls = document.createElement("div");
+            controls.className = "row";
+
+            button(controls, "↑", () => {
+                if (index === 0) {
+                    return;
+                }
+
+                mutate(() => {
+                    [
+                        trigger.actions[index - 1],
+                        trigger.actions[index]
+                    ] = [
+                        trigger.actions[index],
+                        trigger.actions[index - 1]
+                    ];
+                });
+            });
+
+            button(controls, "↓", () => {
+                if (index === trigger.actions.length - 1) {
+                    return;
+                }
+
+                mutate(() => {
+                    [
+                        trigger.actions[index],
+                        trigger.actions[index + 1]
+                    ] = [
+                        trigger.actions[index + 1],
+                        trigger.actions[index]
+                    ];
+                });
+            });
+
+            button(controls, "Delete", () =>
+                mutate(() => trigger.actions.splice(index, 1))
+            );
+
+            card.append(controls);
+            root.append(card);
+        });
+
+        let type = "startAnimation";
+
+        field(
+            root,
+            "New action",
+            "select",
+            type,
+            value => type = value,
+            Object.entries(actionNames)
+        );
+
+        button(root, "Add action", () =>
+            mutate(() => trigger.actions.push(newAction(type)))
+        );
+    }
+
+    function renderEntryForm() {
+        const root = $("entryForm");
+        root.replaceChildren();
+
+        const layer = $("layer").value;
+        const entry = model.extensions[layer]?.[active];
+
+        if (!entry) {
+            return;
+        }
+
+        const change = (key, value) =>
+            mutate(() => entry[key] = value);
+
+        for (const key of ["x", "y"]) {
+            field(
+                root,
+                "Local " + key.toUpperCase(),
+                "number",
+                entry[key],
+                value => change(key, value)
+            );
+        }
+
+        if (layer === "animatedCells") {
+            field(
+                root,
+                "Orientation",
+                "select",
+                entry.rotation,
+                value => change("rotation", Number(value)),
+                rotations
+            );
+
+            field(
+                root,
+                "Pattern block IDs, separated by commas",
+                "text",
+                entry.pattern.join(","),
+                value => {
+                    const pattern = value.split(",").map(part =>
+                        part.trim() ? Number(part.trim()) : NaN
+                    );
+
+                    change("pattern", pattern);
+                }
+            );
+
+            field(
+                root,
+                "Counter offset",
+                "number",
+                entry.offset,
+                value => change("offset", value)
+            );
+
+            field(
+                root,
+                "Pattern sampling",
+                "select",
+                entry.sampling,
+                value => change("sampling", value),
+                [["clamp", "Hold endpoint"], ["wrap", "Wrap pattern"]]
+            );
+        }
+
+        if (layer === "objects" || layer === "monsters") {
+            field(
+                root,
+                "Object / monster value",
+                "select",
+                entry.value,
+                value => change("value", Number(value)),
+                objectChoices
+            );
+
+            field(
+                root,
+                "Rotation metadata",
+                "select",
+                entry.rotation ?? 0,
+                value => change("rotation", Number(value)),
+                rotations
+            );
+        }
+
+        if (layer === "monsters") {
+            field(
+                root,
+                "Name",
+                "text",
+                entry.name || "",
+                value => change("name", value)
+            );
+
+            field(
+                root,
+                "Behavior override — blank uses default",
+                "text",
+                entry.behavior || "",
+                value => mutate(() => {
+                    if (value.trim()) {
+                        entry.behavior = value.trim();
+                    } else {
+                        delete entry.behavior;
+                    }
+                })
+            );
+
+            field(
+                root,
+                "Character dialogue ID",
+                "text",
+                entry.characterID || "",
+                value => change("characterID", value.trim())
+            );
+        }
+
+        if (layer === "triggers") {
+            field(
+                root,
+                "Trigger ID",
+                "text",
+                entry.id || "",
+                value => mutate(() => {
+                    if (value.trim()) {
+                        entry.id = value.trim();
+                    } else {
+                        delete entry.id;
+                    }
+                })
+            );
+
+            for (const kind of ["step", "arrow"]) {
+                field(
+                    root,
+                    kind === "step"
+                        ? "Player steps on square"
+                        : "Arrow hits square",
+                    "checkbox",
+                    entry.activation.includes(kind),
+                    enabled => change(
+                        "activation",
+                        enabled
+                            ? [...new Set([...entry.activation, kind])]
+                            : entry.activation.filter(value => value !== kind)
+                    )
+                );
+            }
+
+            const help = document.createElement("p");
+            help.className = "small";
+            help.textContent =
+                "Uncheck both activation boxes for a named-only trigger " +
+                "called by dialogue or another trigger.";
+
+            root.append(help);
+
+            field(
+                root,
+                "Enabled",
+                "checkbox",
+                entry.enabled,
+                value => change("enabled", value)
+            );
+
+            field(
+                root,
+                "Activate once",
+                "checkbox",
+                entry.once,
+                value => change("once", value)
+            );
+
+            renderActions(root, entry);
+        }
+
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+
+        summary.textContent = "Complete entry JSON";
+        details.append(summary);
+
+        const json = field(
+            details,
+            "Entry data",
+            "textarea",
+            JSON.stringify(entry, null, 2),
+            () => {}
+        );
+
+        button(details, "Apply entry JSON", () => {
+            const next = JSON.parse(json.value);
+
+            mutate(() => {
+                model.extensions[layer][active] = next;
+            });
+        });
+
+        root.append(details);
+    }
+
+    function renderForms() {
+        renderAnimationForm();
+        renderEntryList();
+        refreshNamedTriggers();
+
+        $("extensionsJSON").value =
+            JSON.stringify(model.extensions, null, 2);
+    }
+
+    function addEntry() {
+        const layer = $("layer").value;
+
+        if (layer === "tiles") {
+            return;
+        }
+
+        mutate(() => {
+            const entries = model.extensions[layer] ??= [];
+
+            if (layer === "animatedCells") {
+                model.extensions.animation ??= defaultAnimation();
+
+                entries.push({
+                    ...selected,
+                    rotation: 0,
+                    pattern: [1, 0],
+                    offset: 0,
+                    sampling: "clamp"
+                });
+            }
+
+            if (layer === "objects") {
+                entries.push({
+                    ...selected,
+                    value: OBJECT.QUIVER,
+                    rotation: 0
+                });
+            }
+
+            if (layer === "monsters") {
+                entries.push({
+                    ...selected,
+                    value: OBJECT.SNAKE,
+                    name: "",
+                    behavior: "friendlyStanding",
+                    characterID: "",
+                    rotation: 0
+                });
+            }
+
+            if (layer === "triggers") {
+                let number = 1;
+                let id;
+
+                do {
+                    id = "room_" + model.roomID + "_trigger_" + number++;
+                } while (entries.some(entry => entry.id === id));
+
+                entries.push({
+                    ...selected,
+                    id,
+                    activation: ["step", "arrow"],
+                    enabled: true,
+                    once: true,
+                    actions: []
+                });
+            }
+
+            active = entries.length - 1;
+        });
+    }
+
+    function makeTestRoom(tiles, extensions) {
+        return {
+            definition: copy(extensions),
+
+            state: {
+                tiles: copy(tiles),
+
+                objects: copy([
+                    ...(extensions.objects || []),
+                    ...(extensions.monsters || [])
+                ]),
+
+                animation: extensions.animation
+                    ? { ...copy(extensions.animation), elapsed: 0 }
+                    : null,
+
+                fired: new Set()
+            }
+        };
+    }
+
+    function applyFrames(room) {
+        const animation = room.state.animation;
+
+        if (!animation) {
+            return;
+        }
+
+        for (const cell of room.definition.animatedCells || []) {
+            let index =
+                animation.counter -
+                animation.min +
+                (cell.offset || 0);
+
+            if (cell.sampling === "wrap") {
+                index =
+                    ((index % cell.pattern.length) + cell.pattern.length) %
+                    cell.pattern.length;
+            } else {
+                index = Math.max(
+                    0,
+                    Math.min(cell.pattern.length - 1, index)
+                );
+            }
+
+            room.state.tiles[cell.y * 9 + cell.x] =
+                cell.pattern[index] |
+                ((cell.rotation || 0) << 6);
+        }
+    }
+
+    function resetTest() {
+        testRooms = new Map();
+
+        workingRooms.forEach((tiles, id) => {
+            if (!tiles) {
+                return;
+            }
+
+            const normalized = normalize({
+                roomID: id,
+                name: workingExtensions[id]?.name || "Room " + id,
+                tiles,
+                extensions: workingExtensions[id] || {}
+            });
+
+            testRooms.set(
+                id,
+                makeTestRoom(normalized.tiles, normalized.extensions)
+            );
+        });
+
+        testRooms.set(
+            model.roomID,
+            makeTestRoom(model.tiles, model.extensions)
+        );
+
+        for (const room of testRooms.values()) {
+            applyFrames(room);
+        }
+
+        $("testLog").textContent = "Preview reset.";
+        draw();
+    }
+
+    function currentTestRoom() {
+        return testRooms.get(model.roomID);
+    }
+
+    function fireTrigger(
+        room,
+        trigger,
+        index,
+        messages,
+        executing = new Set(),
+        budget = { remaining: 256 }
+    ) {
+        if (
+            trigger.enabled === false ||
+            (trigger.once && room.state.fired.has(index))
+        ) {
+            return false;
+        }
+
+        if (executing.has(trigger)) {
+            messages.push(
+                "Recursive trigger skipped: " + (trigger.id || index)
+            );
+            return false;
+        }
+
+        if (--budget.remaining < 0) {
+            throw new Error("Trigger chain exceeded the preview limit.");
+        }
+
+        executing.add(trigger);
+
+        try {
+            for (const action of trigger.actions || []) {
+                const state = room.state;
+
+                switch (action.type) {
+                    case "startAnimation":
+                        if (state.animation) {
+                            state.animation.direction =
+                                action.direction ??
+                                state.animation.direction;
+
+                            state.animation.running = true;
+                        }
+                        break;
+
+                    case "stopAnimation":
+                        if (state.animation) {
+                            state.animation.running = false;
+                        }
+                        break;
+
+                    case "changeTile":
+                        state.tiles[action.y * 9 + action.x] =
+                            action.blockID |
+                            ((action.rotation || 0) << 6);
+                        break;
+
+                    case "depositObject":
+                    case "depositMonster":
+                        state.objects.push(copy(action));
+                        break;
+
+                    case "changeObject": {
+                        const object = state.objects.find(entry =>
+                            entry.x === action.x &&
+                            entry.y === action.y &&
+                            entry.value === action.fromValue
+                        );
+
+                        if (object) {
+                            object.value = action.value;
+                        }
+                        break;
+                    }
+
+                    case "addKnowledge":
+                        messages.push(
+                            "Knowledge logged: " + JSON.stringify(action)
+                        );
+                        break;
+
+                    case "fireTrigger": {
+                        let found = false;
+
+                        for (const target of testRooms.values()) {
+                            for (const [targetIndex, targetTrigger] of
+                                (target.definition.triggers || []).entries()
+                            ) {
+                                if (targetTrigger.id !== action.id) {
+                                    continue;
+                                }
+
+                                found = true;
+
+                                fireTrigger(
+                                    target,
+                                    targetTrigger,
+                                    targetIndex,
+                                    messages,
+                                    executing,
+                                    budget
+                                );
+                            }
+                        }
+
+                        if (!found) {
+                            messages.push(
+                                "Missing trigger target: " + action.id
+                            );
+                        }
+                        break;
+                    }
+
+                    default:
+                        messages.push(
+                            "Action preserved but not simulated: " +
+                            action.type
+                        );
+                }
+            }
+
+            room.state.fired.add(index);
+
+            messages.push(
+                "Fired: " + (trigger.id || "trigger " + index)
+            );
+
+            return true;
+        } finally {
+            executing.delete(trigger);
+        }
+    }
+
+    function testAtSquare(kind) {
+        const room = currentTestRoom();
+        const messages = [];
+
+        for (const [index, trigger] of
+            (room.definition.triggers || []).entries()
+        ) {
+            if (
+                trigger.x === selected.x &&
+                trigger.y === selected.y &&
+                trigger.activation.includes(kind)
+            ) {
+                fireTrigger(room, trigger, index, messages);
+            }
+        }
+
+        $("testLog").textContent =
+            messages.join("\n") || "No eligible trigger on this square.";
+
+        draw();
+    }
+
+    function refreshNamedTriggers() {
+        const previous = $("namedTrigger").value;
+        $("namedTrigger").replaceChildren();
+
+        const definitions = {
+            ...workingExtensions,
+            [model.roomID]: model.extensions
+        };
+
+        const seen = new Set();
+
+        for (const extensions of Object.values(definitions)) {
+            for (const trigger of extensions.triggers || []) {
+                if (!trigger.id || seen.has(trigger.id)) {
+                    continue;
+                }
+
+                seen.add(trigger.id);
+
+                const option = document.createElement("option");
+                option.value = trigger.id;
+                option.textContent = trigger.id;
+
+                $("namedTrigger").append(option);
+            }
+        }
+
+        if (seen.has(previous)) {
+            $("namedTrigger").value = previous;
+        }
+    }
+
+    function draw() {
+        const room = currentTestRoom();
+
+        if (!room) {
+            return;
+        }
+
+        const size = canvas.width / 9;
+        const turns = Number($("previewRotation").value);
+
+        context.fillStyle = "#101619";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+
+        for (let y = 0; y < 9; y++) {
+            for (let x = 0; x < 9; x++) {
+                const value = room.state.tiles[y * 9 + x];
+                const blockID = value & 63;
+                const orientation = ((value >> 6) + turns) & 3;
+                const point = rotate(x, y, turns);
+
+                drawSprite(
+                    context,
+                    BLOCK_SPRITES[blockID],
+                    point.x * size,
+                    point.y * size,
+                    size,
+                    orientation
+                );
+            }
+        }
+
+        for (const object of room.state.objects) {
+            const definition = OBJECT_DEFS[object.value];
+
+            if (!definition) {
+                continue;
+            }
+
+            const point = rotate(object.x, object.y, turns);
+
+            drawSprite(
+                context,
+                definition[0],
+                point.x * size,
+                point.y * size,
+                size,
+                ((object.rotation || 0) + turns) & 3
+            );
+        }
+
+        context.strokeStyle = "#10161988";
+        context.lineWidth = 1;
+
+        for (let line = 0; line <= 9; line++) {
+            context.beginPath();
+            context.moveTo(line * size, 0);
+            context.lineTo(line * size, canvas.height);
+            context.moveTo(0, line * size);
+            context.lineTo(canvas.width, line * size);
+            context.stroke();
+        }
+
+        for (const [layer, letter, color, offset] of [
+            ["animatedCells", "A", "#ffe09b", 4],
+            ["triggers", "T", "#85dfff", 24],
+            ["monsters", "M", "#f6a8a8", 44]
+        ]) {
+            for (const entry of model.extensions[layer] || []) {
+                const point = rotate(entry.x, entry.y, turns);
+
+                const px = point.x * size + 3;
+                const py = point.y * size + offset;
+
+                context.fillStyle = "#101619dd";
+                context.fillRect(px, py, 17, 17);
+
+                context.fillStyle = color;
+                context.font = "bold 12px monospace";
+                context.fillText(letter, px + 4, py + 13);
+            }
+        }
+
+        const point = rotate(selected.x, selected.y, turns);
+
+        context.strokeStyle = "#fff1ae";
+        context.lineWidth = 3;
+
+        context.strokeRect(
+            point.x * size + 2,
+            point.y * size + 2,
+            size - 4,
+            size - 4
+        );
+
+        $("selection").textContent =
+            "Local square " + selected.x + ", " + selected.y;
+
+        $("localX").value = selected.x;
+        $("localY").value = selected.y;
+
+        const animation = room.state.animation;
+
+        $("counter").min = animation?.min ?? 0;
+        $("counter").max = animation?.max ?? 1;
+        $("counter").value = animation?.counter ?? 0;
+        $("counter").disabled = !animation;
+
+        $("counterValue").textContent =
+            (animation?.counter ?? 0) +
+            (animation?.running ? " · running" : " · stopped");
+    }
+
+    function paint() {
+        const block = Number($("blockID").value);
+        const rotation = Number($("blockRotation").value);
+
+        integer(block, 0, 63, "Block ID");
+        integer(rotation, 0, 3, "Orientation");
+
+        model.tiles[selected.y * 9 + selected.x] =
+            block | (rotation << 6);
+
+        resetTest();
+    }
+
+    function canvasHit(event) {
+        const bounds = canvas.getBoundingClientRect();
+
+        const x = Math.floor(
+            (event.clientX - bounds.left) / bounds.width * 9
+        );
+
+        const y = Math.floor(
+            (event.clientY - bounds.top) / bounds.height * 9
+        );
+
+        if (x < 0 || y < 0 || x > 8 || y > 8) {
+            return;
+        }
+
+        selected = rotate(
+            x,
+            y,
+            (4 - Number($("previewRotation").value)) & 3
+        );
+
+        const layer = $("layer").value;
+
+        if (layer === "tiles") {
+            paint();
+        } else {
+            active = (model.extensions[layer] || []).findIndex(entry =>
+                entry.x === selected.x &&
+                entry.y === selected.y
+            );
+
+            renderEntryList();
+            draw();
+        }
+    }
+
+    function importData(data) {
+        if (data.format !== "dungeon-rooms-v2") {
+            loadRoom(data);
+            return;
+        }
+
+        if (
+            !Array.isArray(data.rooms) ||
+            !data.rooms.length ||
+            data.rooms.length > 16 ||
+            !data.extensions ||
+            typeof data.extensions !== "object" ||
+            Array.isArray(data.extensions)
+        ) {
+            throw new Error("Invalid room collection.");
+        }
+
+        const rooms = [];
+
+        for (let id = 0; id < data.rooms.length; id++) {
+            const room = normalize({
+                roomID: id,
+                name: data.extensions[id]?.name || "Room " + id,
+                tiles: data.rooms[id],
+                extensions: data.extensions[id] || {}
+            });
+
+            validateRoom(room);
+            rooms.push(room);
+        }
+
+        workingRooms.splice(
+            0,
+            workingRooms.length,
+            ...rooms.map(room => copy(room.tiles))
+        );
+
+        for (const key of Object.keys(workingExtensions)) {
+            delete workingExtensions[key];
+        }
+
+        for (const room of rooms) {
+            workingExtensions[room.roomID] = copy(room.extensions);
+        }
+
+        refreshRoomPicker();
+        loadRoom(rooms[0]);
+
+        status("Imported " + rooms.length + " rooms.");
+    }
+
+    function download(name, text, type) {
+        const url = URL.createObjectURL(
+            new Blob([text], { type })
+        );
+
+        const link = document.createElement("a");
+
+        link.href = url;
+        link.download = name;
+        link.click();
+
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function definitionsJavaScript() {
+        const collection = exportCollection();
+
+        return (
+            "\"use strict\";\n\n" +
+
+            "function B(block, orientation = N) {\n" +
+            "    return (block & 63) | ((orientation & 3) << 6);\n" +
+            "}\n\n" +
+
+            "const ROOMS = " +
+            JSON.stringify(collection.rooms, null, 2) +
+            ";\n\n" +
+
+            "const ROOM_EXTENSIONS = " +
+            JSON.stringify(collection.extensions, null, 2) +
+            ";\n"
+        );
+    }
+
+    $("openRoom").onclick = () => safely(() => {
+        const id = Number($("roomPicker").value);
+
+        if (!workingRooms[id]) {
+            throw new Error("Room does not exist.");
+        }
+
+        if (!confirm("Open this room? Keep current edits first.")) {
+            return;
+        }
+
+        loadRoom({
+            roomID: id,
+            name: workingExtensions[id]?.name || "Room " + id,
+            tiles: workingRooms[id],
+            extensions: workingExtensions[id] || {}
+        });
+    });
+
+    $("newRoom").onclick = () => safely(() => {
+        if (confirm("Start a new room? Keep current edits first.")) {
+            loadRoom(freshRoom(Math.min(15, workingRooms.length)));
+        }
+    });
+
+    $("keepRoom").onclick = () => safely(keepRoom);
+
+    $("roomID").onchange = () => safely(() => {
+        mutate(() => model.roomID = Number($("roomID").value));
+    });
+
+    $("roomName").onchange = () => {
+        model.name = $("roomName").value;
+    };
+
+    $("population").onchange = () => safely(() => {
+        mutate(() => {
+            if ($("population").value === "defined") {
+                model.extensions.population = "defined";
+            } else {
+                delete model.extensions.population;
+            }
+        });
+    });
+
+    $("layer").onchange = () => {
+        active = -1;
+        renderEntryList();
+    };
+
+    $("previewRotation").onchange = draw;
+
+    $("addEntry").onclick = () => safely(addEntry);
+    $("paintSquare").onclick = () => safely(paint);
+
+    $("selectSquare").onclick = () => safely(() => {
+        const x = Number($("localX").value);
+        const y = Number($("localY").value);
+
+        integer(x, 0, 8, "Local X");
+        integer(y, 0, 8, "Local Y");
+
+        selected = { x, y };
+        draw();
+    });
+
+    canvas.onpointerdown = event => safely(() => {
+        dragging = true;
+        canvas.setPointerCapture(event.pointerId);
+        canvasHit(event);
+    });
+
+    canvas.onpointermove = event => {
+        if (dragging && $("layer").value === "tiles") {
+            safely(() => canvasHit(event));
+        }
+    };
+
+    canvas.onpointerup = () => dragging = false;
+    canvas.onpointercancel = () => dragging = false;
+
+    $("hasAnimation").onchange = () => safely(() => {
+        mutate(() => {
+            if ($("hasAnimation").checked) {
+                model.extensions.animation ??= defaultAnimation();
+            } else {
+                if (model.extensions.animatedCells?.length) {
+                    throw new Error(
+                        "Remove animated tiles before disabling their controller."
+                    );
+                }
+
+                delete model.extensions.animation;
+            }
+        });
+    });
+
+    function runAnimation(direction) {
+        const animation = currentTestRoom().state.animation;
+
+        if (!animation) {
+            throw new Error("Enable a room animation controller first.");
+        }
+
+        animation.direction = direction;
+        animation.running = true;
+        draw();
+    }
+
+    $("runUp").onclick = () => safely(() => runAnimation(1));
+    $("runDown").onclick = () => safely(() => runAnimation(-1));
+
+    $("stopAnimation").onclick = () => {
+        const animation = currentTestRoom().state.animation;
+
+        if (animation) {
+            animation.running = false;
+        }
+
+        draw();
+    };
+
+    $("resetTest").onclick = resetTest;
+
+    $("counter").oninput = () => {
+        const room = currentTestRoom();
+
+        if (!room.state.animation) {
+            return;
+        }
+
+        room.state.animation.counter = Number($("counter").value);
+        room.state.animation.running = false;
+
+        applyFrames(room);
+        draw();
+    };
+
+    $("testStep").onclick = () => safely(() => testAtSquare("step"));
+    $("testArrow").onclick = () => safely(() => testAtSquare("arrow"));
+
+    $("testNamed").onclick = () => safely(() => {
+        const id = $("namedTrigger").value;
+        const messages = [];
+
+        for (const room of testRooms.values()) {
+            for (const [index, trigger] of
+                (room.definition.triggers || []).entries()
+            ) {
+                if (trigger.id === id) {
+                    fireTrigger(room, trigger, index, messages);
+                }
+            }
+        }
+
+        $("testLog").textContent =
+            messages.join("\n") ||
+            "No eligible named trigger. It may already have fired.";
+
+        draw();
+    });
+
+    $("showJSON").onclick = () => safely(() => {
+        $("dataText").value =
+            JSON.stringify(exportRoom(), null, 2);
+    });
+
+    $("showJS").onclick = () => safely(() => {
+        const room = exportRoom();
+
+        $("dataText").value =
+            "// Matching entries for room " + room.roomID + "\n\n" +
+
+            "ROOMS[" + room.roomID + "] = " +
+            JSON.stringify(room.tiles, null, 2) +
+            ";\n\n" +
+
+            "ROOM_EXTENSIONS[" + room.roomID + "] = " +
+            JSON.stringify(room.extensions, null, 2) +
+            ";\n";
+    });
+
+    $("showAllJSON").onclick = () => safely(() => {
+        $("dataText").value =
+            JSON.stringify(exportCollection(), null, 2);
+    });
+
+    $("downloadDefinitions").onclick = () => safely(() => {
+        download(
+            "room_definitions.js",
+            definitionsJavaScript(),
+            "text/javascript"
+        );
+    });
+
+    $("downloadJSON").onclick = () => safely(() => {
+        download(
+            "room_definitions.json",
+            JSON.stringify(exportCollection(), null, 2),
+            "application/json"
+        );
+    });
+
+    $("importJSON").onclick = () => safely(() => {
+        importData(JSON.parse($("dataText").value));
+    });
+
+    $("openJSON").onchange = async event => {
+        try {
+            const file = event.target.files[0];
+
+            if (file) {
+                importData(JSON.parse(await file.text()));
+            }
+        } catch (error) {
+            status(error.message);
+        } finally {
+            event.target.value = "";
+        }
+    };
+
+    $("applyExtensions").onclick = () => safely(() => {
+        const extensions = JSON.parse($("extensionsJSON").value);
+
+        mutate(() => model.extensions = extensions);
+    });
+
+    $("copyText").onclick = async () => {
+        try {
+            await navigator.clipboard.writeText($("dataText").value);
+            status("Copied.");
+        } catch {
+            $("dataText").focus();
+            $("dataText").select();
+            status("Text selected. Press Command+C or Ctrl+C.");
+        }
+    };
+
+    $("saveDraft").onclick = () => safely(() => {
+        localStorage.setItem(
+            "modern-dungeon-room-editor",
+            JSON.stringify(exportCollection())
+        );
+
+        status("Browser draft saved.");
+    });
+
+    $("loadDraft").onclick = () => safely(() => {
+        const saved = localStorage.getItem(
+            "modern-dungeon-room-editor"
+        );
+
+        if (!saved) {
+            throw new Error("No browser draft found.");
+        }
+
+        importData(JSON.parse(saved));
+    });
+
+    let lastTime = performance.now();
+
+    function tick(now) {
+        const elapsed = Math.min(now - lastTime, 100);
+        lastTime = now;
+
+        let changed = false;
+
+        for (const room of testRooms.values()) {
+            const animation = room.state.animation;
+
+            if (!animation?.running) {
+                continue;
+            }
+
+            if (animation.min === animation.max) {
+                animation.running = false;
+                changed = true;
+                continue;
+            }
+
+            animation.elapsed += elapsed;
+
+            while (
+                animation.running &&
+                animation.elapsed >= animation.tickInterval
+            ) {
+                animation.elapsed -= animation.tickInterval;
+
+                animation.counter = Math.max(
+                    animation.min,
+                    Math.min(
+                        animation.max,
+                        animation.counter + animation.direction
+                    )
+                );
+
+                applyFrames(room);
+
+                const atEnd =
+                    animation.direction > 0
+                        ? animation.counter === animation.max
+                        : animation.counter === animation.min;
+
+                if (atEnd) {
+                    if (animation.mode === "pingPong") {
+                        animation.direction *= -1;
+                    } else {
+                        animation.running = false;
+                        animation.elapsed = 0;
+                    }
+                }
+
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            draw();
+        }
+
+        requestAnimationFrame(tick);
+    }
+
+    buildPalettes();
+    refreshRoomPicker();
+
+    const firstID = workingRooms.findIndex(tiles =>
+        Array.isArray(tiles) && tiles.length === 81
+    );
+
+    if (firstID >= 0) {
+        loadRoom({
+            roomID: firstID,
+            name: workingExtensions[firstID]?.name || "Room " + firstID,
+            tiles: workingRooms[firstID],
+            extensions: workingExtensions[firstID] || {}
+        });
+    } else {
+        loadRoom(freshRoom());
+    }
+
+    requestAnimationFrame(tick);
+})();
+</script>
+
+</body>
+</html>

@@ -103,15 +103,11 @@ function getProjectileBlock(x, y) {
     return decodeBlock(getWorldBlock(x, y));
 }
 
-
 /* =========================================================
-   SOLID WALL TEST
+   PROJECTILE WALL TEST
 
-   Currently block 1 is open terrain.
-   All other blocks are treated as solid.
-
-   This can be expanded when additional terrain
-   behavior is introduced.
+   Preserve block 2 as a directional deflector.
+   Pits and water allow arrows through.
 ========================================================= */
 
 function isProjectileSolidWall(block) {
@@ -119,15 +115,15 @@ function isProjectileSolidWall(block) {
     if (block === null)
         return true;
 
-    switch (block.block) {
+    const spriteIndex = BLOCK_SPRITES[block.block];
 
-        case 1:  // Normal open floor
-        case 2:  // Directional deflector
-            return false;
+    if (!SPRITES[spriteIndex])
+        return true;
 
-        default:
-            return true;
-    }
+    if (block.block === 2)
+        return false;
+
+    return is_wall.has(spriteIndex);
 }
 
 
@@ -137,11 +133,10 @@ function isProjectileSolidWall(block) {
 
 function canProjectileMoveTo(x, y) {
 
-    const block = getProjectileBlock(x, y);
-
-    return !isProjectileSolidWall(block);
+    return !isProjectileSolidWall(
+        getProjectileBlock(x, y)
+    );
 }
-
 
 /* =========================================================
    CREATE PROJECTILE
@@ -431,6 +426,22 @@ function determineProjectileMovement(
     nextX = projectile[0] + dx;
     nextY = projectile[1] + dy;
 
+    // Activate triggers at the square the arrow will enter or hit.
+    if (
+        projectile.projectileType === "FIRE_ARROW" &&
+        nextX >= 0 &&
+        nextY >= 0 &&
+        nextX < WORLD_W &&
+        nextY < WORLD_H
+    ) {
+        RoomExtensions.onRoomArrowHit(
+            nextX,
+            nextY,
+            { projectile }
+        );
+    }
+
+    // Read AFTER trigger actions, since a trigger can change this tile.
     nextBlock = getProjectileBlock(nextX, nextY);
 
     // -----------------------------------------

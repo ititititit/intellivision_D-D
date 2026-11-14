@@ -1,17 +1,15 @@
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <title>Dungeon Explorer</title>
 
 <style>
-
-/* =========================================================
-   PAGE
-========================================================= */
+* {
+    box-sizing: border-box;
+}
 
 html,
 body {
@@ -19,76 +17,63 @@ body {
     padding: 0;
     width: 100%;
     height: 100%;
-    overflow: hidden;
-
     background: #080808;
     color: #ddd;
-
     font-family: Arial, sans-serif;
 }
-
-
-/* =========================================================
-   GAME DISPLAY
-========================================================= */
 
 body {
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: auto;
+    padding: 12px;
 }
 
-/*canvas {
-    display: block;
-
-    background: #000;
-
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-
-    width: min(96vw, 96vh);
-    height: min(96vw, 96vh);
-
-    border: 2px solid #555;
-    box-shadow: 0 0 24px #000;
-}*/
-
-canvas {
-    border: 2px solid #777;
-    width: 800px;
-    height: auto;
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-}
+/* GAME CONTAINER */
 
 #gameContainer {
     display: flex;
     flex-direction: column;
     align-items: center;
+    width: 100%;
+    max-width: 800px;
     gap: 12px;
+    margin: auto;
 }
 
-#dungeonControls {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px;
-    background: #1b1b1b;
-    border: 1px solid #444;
+/* TITLE */
+
+#gameTitle {
+    margin: 0;
+    padding: 8px 12px;
+    color: #f5d446;
+    font-family: Georgia, serif;
+    font-size: clamp(24px, 5vw, 46px);
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-align: center;
+    text-transform: uppercase;
+    text-shadow:
+        2px 3px 0 #8b421a,
+        0 0 20px #d57a2b55;
 }
 
-#dungeonControls input,
-#dungeonControls select,
-#dungeonControls button {
-    background: #292929;
-    color: #eee;
-    border: 1px solid #555;
-    padding: 6px;
+/* GAME DISPLAY */
+
+#game {
+    display: block;
+    width: 100%;
+    height: auto;
+    flex-shrink: 0;
+    background: #000;
+    border: 2px solid #777;
+    box-shadow: 0 0 24px #000;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
 }
 
-#seedInput {
-    width: 100px;
-}
+/* HELP OVERLAY */
 
 #helpCanvas {
     position: fixed;
@@ -97,211 +82,161 @@ canvas {
     height: 100vh;
     z-index: 1000;
     display: none;
+    border: none;
+    box-shadow: none;
     pointer-events: none;
 }
 </style>
-
 </head>
 
 <body>
 
 <div id="gameContainer">
+    <h1 id="gameTitle">Cloudy Mountain Quest</h1>
 
-    <div id="dungeonControls">
-
-        <label>
-            Seed:
-            <input type="number" id="seedInput" value="12345">
-        </label>
-
-        <label>
-            Dungeon:
-            <select id="dungeonColor">
-                <option value="red">Red</option>
-                <option value="blue">Blue</option>
-                <option value="purple">Purple</option>
-                <option value="white">White</option>
-            </select>
-        </label>
-
-        <button onclick="regenerateDungeon()">
-            Regenerate
-        </button>
-
-        <button onclick="randomDungeonSeed()">
-            Random Seed
-        </button>
-
-    </div>
-
-<!-- =======================================================
-     GAME CANVAS
-======================================================= -->
-
-    <canvas id="game" width="160" height="96"></canvas>
-	<canvas id="helpCanvas"></canvas>
+    <!-- Backing dimensions are set by dungeon_render.js. -->
+    <canvas
+        id="game"
+        width="320"
+        height="212"
+        aria-label="Dungeon Explorer game"
+    ></canvas>
 </div>
 
-<!-- =======================================================
-     SOUND ENGINE
-======================================================= -->
+<canvas id="helpCanvas"></canvas>
 
+<!-- SOUND ENGINE -->
 <script src="sound.js"></script>
 
 <script>
+"use strict";
 
-/* =========================================================
-   DUNGEON CONFIGURATION
-========================================================= */
+/* DUNGEON CONFIGURATION */
 
-const dungeonParams = new URLSearchParams(window.location.search);
+const dungeonParams = new URLSearchParams(
+    window.location.search
+);
 
-const GAME_SEED = Number(
+const requestedSeed = Number(
     dungeonParams.get("seed") ?? 12345
 );
 
-const GAME_DUNGEON_COLOR =
-    dungeonParams.get("color") || "red";
+const GAME_SEED = Number.isSafeInteger(requestedSeed)
+    ? requestedSeed
+    : 12345;
 
+const requestedColor = (
+    dungeonParams.get("color") || "red"
+).toLowerCase();
 
-/* =========================================================
-   INITIALIZE CONTROLS
-========================================================= */
-
-document.getElementById("seedInput").value = GAME_SEED;
-
-document.getElementById("dungeonColor").value =
-    GAME_DUNGEON_COLOR;
-
-
-/* =========================================================
-   REGENERATE DUNGEON
-========================================================= */
-
-function regenerateDungeon() {
-
-    const seed = document.getElementById("seedInput").value;
-
-    const color = document.getElementById("dungeonColor").value;
-
-    const url = new URL(window.location.href);
-
-    url.searchParams.set("seed", seed);
-    url.searchParams.set("color", color);
-
-    window.location.href = url.href;
-}
-
-
-/* =========================================================
-   RANDOM DUNGEON SEED
-========================================================= */
-
-function randomDungeonSeed() {
-
-    const seed = Math.floor(Math.random() * 2147483647) + 1;
-
-    document.getElementById("seedInput").value = seed;
-
-    regenerateDungeon();
-}
-
+const GAME_DUNGEON_COLOR = [
+    "red",
+    "blue",
+    "purple",
+    "white"
+].includes(requestedColor)
+    ? requestedColor
+    : "red";
 </script>
 
-<!-- =======================================================
-     GENERATES DUNGEON CONTROL HELP SCREEN
-
-     help screen
-======================================================= -->
+<!-- HELP -->
 <script src="dungeon_help.js"></script>
 
-<!-- =======================================================
-     GENERATES A RANDOM DUGEON LAYOUT
-
-     map generation
-======================================================= -->
+<!-- DUNGEON GENERATION -->
+<script src="dungeon_room_extension.js"></script>
 <script src="dungeon_visibility.js"></script>
 <script src="dungeon_generator.js"></script>
 
-<!-- =======================================================
-     GAME DEFINITIONS
-
-     Constants, blocks, rooms, sprites, dungeon layout,
-     objects, inventory icons and animation definitions.
-======================================================= -->
+<!-- DEFINITIONS -->
 <script src="dungeon_placement.js"></script>
+<script src="sprite_definitions.js"></script>
 <script src="dungeon_definitions.js"></script>
+<script src="room_definitions.js"></script>
+<script src="dungeon_initialization.js"></script>
 <script src="overworld_generator.js"></script>
 
-<!-- =======================================================
-     WORLD
-
-     Block decoding, room rotation, world terrain lookup.
-======================================================= -->
-
+<!-- WORLD AND CAMERA -->
 <script src="dungeon_world.js"></script>
-
-<!-- =======================================================
-     CAMERA
-
-     Camera positioning and boundary constraints.
-======================================================= -->
-
 <script src="dungeon_camera.js"></script>
 
-
-<!-- =======================================================
-     RENDERING
-
-     Terrain, sprites, objects, player and screen drawing.
-======================================================= -->
+<!-- RENDERING -->
 <script src="dungeon_render.js"></script>
 
-<!-- =======================================================
-     INVENTORY
-
-     Inventory panel and item icon rendering.
-======================================================= -->
-
+<!-- INVENTORY -->
 <script src="dungeon_inventory.js"></script>
 
-
-<!-- =======================================================
-     PLAYER
-
-     Player state, movement, collision and item pickup.
-======================================================= -->
-
-
+<!-- PLAYER, PROJECTILES AND MONSTERS -->
 <script src="dungeon_player.js"></script>
 <script src="dungeon_projectiles.js"></script>
 <script src="monster_movement.js"></script>
 <script src="dungeon_entity_collision.js"></script>
-<!-- =======================================================
-     AUDIO
 
-     Monster proximity sounds.
-======================================================= -->
-
+<!-- AUDIO AND INPUT -->
 <script src="dungeon_audio.js"></script>
-
-
-<!-- =======================================================
-     INPUT
-
-     Keyboard controls.
-======================================================= -->
-
 <script src="dungeon_input.js"></script>
 
-<!-- =======================================================
-     GAME
-
-     Initialization, animation and update timers.
-
-     Must load last.
-======================================================= -->
+<!-- GAME INITIALIZATION -->
+<script src="character_definitions.js"></script>
+<script src="character.js"></script>
 <script src="dungeon_game.js"></script>
+
+<script>
+"use strict";
+
+/* FIT GAME TO WINDOW
+   Changes CSS display size only.
+   Never changes canvas.width or canvas.height.
+*/
+
+function fitGameDisplay() {
+    const gameCanvas = document.getElementById("game");
+    const title = document.getElementById("gameTitle");
+    const container = document.getElementById("gameContainer");
+
+    const availableWidth = Math.max(
+        1,
+        Math.min(800, container.clientWidth)
+    );
+
+    const availableHeight = Math.max(
+        1,
+        window.innerHeight -
+        title.getBoundingClientRect().height -
+        24 -
+        12
+    );
+
+    // Account for the canvas's two-pixel border.
+    const aspect = gameCanvas.width / gameCanvas.height;
+
+    const widthForHeight =
+        Math.max(1, availableHeight - 4) * aspect + 4;
+
+    const displayWidth = Math.max(
+        1,
+        Math.floor(
+            Math.min(availableWidth, widthForHeight)
+        )
+    );
+
+    gameCanvas.style.width = displayWidth + "px";
+}
+
+window.addEventListener("resize", fitGameDisplay);
+window.addEventListener("load", fitGameDisplay);
+
+if (typeof ResizeObserver !== "undefined") {
+    const gameLayoutObserver = new ResizeObserver(
+        fitGameDisplay
+    );
+
+    gameLayoutObserver.observe(
+        document.getElementById("gameTitle")
+    );
+}
+
+fitGameDisplay();
+</script>
 
 </body>
 </html>

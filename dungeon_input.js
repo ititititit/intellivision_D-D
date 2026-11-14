@@ -32,6 +32,9 @@
 
 function handleGameKey(event) {
 
+   if (characterDialogueOpen)
+        return;
+
     if (isGameOver()) {
         event.preventDefault();
         return;
@@ -236,4 +239,130 @@ function initializeInput() {
         "keydown",
         handleGameKey
     );
+
+    canvas.addEventListener(
+        "click",
+        handleGameClick
+    );
+}
+
+/* =========================================================
+   CHARACTER DIALOGUE STATE
+========================================================= */
+
+let characterDialogueOpen = false;
+
+
+/* =========================================================
+   CLICK A CHARACTER
+========================================================= */
+
+function handleGameClick(event) {
+
+    if (
+        gameMode !== GAME_MODE.DUNGEON ||
+        isGameOver() ||
+        characterDialogueOpen ||
+        movementLocked
+    ) {
+        return;
+    }
+
+    const bounds = canvas.getBoundingClientRect();
+
+    if (!bounds.width || !bounds.height)
+        return;
+
+    // Convert CSS coordinates to canvas pixels.
+    const pixelX =
+        (event.clientX - bounds.left) *
+        canvas.width / bounds.width;
+
+    const pixelY =
+        (event.clientY - bounds.top) *
+        canvas.height / bounds.height;
+
+    // Exclude the inventory area beneath the map.
+    if (
+        pixelX < 0 ||
+        pixelY < 0 ||
+        pixelX >= VIEW_W * DISPLAY_BLOCK_PIXELS ||
+        pixelY >= VIEW_H * DISPLAY_BLOCK_PIXELS
+    ) {
+        return;
+    }
+
+    const worldX =
+        pixelX / DISPLAY_BLOCK_PIXELS +
+        cameraX + cameraOffsetX;
+
+    const worldY =
+        pixelY / DISPLAY_BLOCK_PIXELS +
+        cameraY + cameraOffsetY;
+
+    // Search backwards so later-drawn objects get priority.
+    for (let i = DUNGEON_OBJECTS.length - 1; i >= 0; i--) {
+
+        const monster = DUNGEON_OBJECTS[i];
+
+        if (
+            !monster.character ||
+            monster.state === "dead" ||
+            !isDungeonTileVisible(monster[0], monster[1])
+        ) {
+            continue;
+        }
+
+        const x = monster[0] + (monster.offset_x ?? 0);
+        const y = monster[1] + (monster.offset_y ?? 0);
+
+        if (
+            worldX < x ||
+            worldX >= x + 1 ||
+            worldY < y ||
+            worldY >= y + 1
+        ) {
+            continue;
+        }
+
+		CharacterModel.showCharacterDialogue(
+			monster.character,
+			{
+				actions: {
+					fire_room_trigger({ character, option }) {
+						const fired = RoomExtensions.fireTrigger(
+							option.triggerID,
+							{
+								source: "dialogue",
+								character,
+								monster
+							}
+						);
+		
+						if (!fired) {
+							return {
+								ok: false,
+								message:
+									"That mechanism is unavailable or " +
+									"has already been activated."
+							};
+						}
+		
+						return true;
+					}
+				},
+		
+				onOpen() {
+					characterDialogueOpen = true;
+				},
+		
+				onClose() {
+					characterDialogueOpen = false;
+					drawGame();
+				}
+			}
+		);
+
+        return;
+    }
 }

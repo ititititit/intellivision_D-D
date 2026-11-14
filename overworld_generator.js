@@ -1,4 +1,8 @@
 "use strict";
+
+// this places dungeons in more convenient location for testing
+const TEST_DUNGEON_PLACEMENT = false;
+
 /* =========================================================
    OVERWORLD GENERATOR
 
@@ -156,56 +160,136 @@ const generateOverworld = (() => {
         }
     }
 
-    function generateMountains(target) {
-        const anchors = [];
-        let attempts = 0;
+function generateMountains(target) {
+	const anchors = [];
+	let attempts = 0;
 
-        function countMountains() {
-            let count = 0;
+	function countMountains() {
+		let count = 0;
 
-            for (const row of map) {
-                for (const tile of row) {
-                    if (tile.type === TYPE.MOUNTAIN) {
-                        count++;
-                    }
-                }
+		for (const row of map) {
+			for (const tile of row) {
+				if (tile.type === TYPE.MOUNTAIN) {
+					count++;
+				}
+			}
+		}
+
+		return count;
+	}
+
+	while (
+		countMountains() < target &&
+		attempts++ < 100
+	) {
+		let x;
+		let y;
+
+		if (anchors.length && Math.random() < 0.65) {
+			const anchor = anchors[rnd(anchors.length)];
+
+			x = anchor.x + range(-4, 4);
+			y = anchor.y + range(-3, 3);
+		} else {
+			x = range(2, VIEW_W - 3);
+			y = rnd(VIEW_H);
+		}
+
+		x = Math.max(1, Math.min(VIEW_W - 2, x));
+		y = Math.max(0, Math.min(VIEW_H - 1, y));
+
+		anchors.push({ x, y });
+
+		growMountainRange(
+			x,
+			y,
+			range(5, 13),
+			rnd(2) ? 1 : -1,
+			rnd(2) ? 1 : -1
+		);
+	}
+}
+
+function placeSpecialDungeons(access) {
+
+    const height = map.length;
+    const width = map[0].length;
+    const key = (x, y) => y * width + x;
+
+    const definitions = [
+        { dungeon: "TRAP",  sprite: SPRITE.CAVE },
+        { dungeon: "WATER", sprite: SPRITE.CAVE },
+        { dungeon: "ARMOR", sprite: SPRITE.SHRINE }
+    ];
+
+	if (TEST_DUNGEON_PLACEMENT) {
+		const y = Math.floor(height / 2) - 1;
+	
+		definitions.forEach((definition, x) => {
+			map[y][x] = {
+				type: TYPE.GRASS,
+				sprite: definition.sprite,
+				palette: null,
+				dungeon: definition.dungeon.toLowerCase()
+			};
+	
+			OVERWORLD_DUNGEONS.push([
+				x,
+				y,
+				definition.dungeon
+			]);
+		});
+	
+		return;
+	}
+
+    const candidates = [];
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+
+            if (protectedArea(x, y)) continue;
+
+            if (map[y][x].type !== TYPE.GRASS) continue;
+
+            if (!access.reachable.has(key(x, y))) continue;
+
+            // Preserve every existing dungeon entrance.
+            if (OVERWORLD_DUNGEONS.some(
+                entry => entry[0] === x && entry[1] === y
+            )) {
+                continue;
             }
 
-            return count;
-        }
-
-        while (
-            countMountains() < target &&
-            attempts++ < 100
-        ) {
-            let x;
-            let y;
-
-            if (anchors.length && Math.random() < 0.65) {
-                const anchor = anchors[rnd(anchors.length)];
-
-                x = anchor.x + range(-4, 4);
-                y = anchor.y + range(-3, 3);
-            } else {
-                x = range(2, VIEW_W - 3);
-                y = rnd(VIEW_H);
-            }
-
-            x = Math.max(1, Math.min(VIEW_W - 2, x));
-            y = Math.max(0, Math.min(VIEW_H - 1, y));
-
-            anchors.push({ x, y });
-
-            growMountainRange(
-                x,
-                y,
-                range(5, 13),
-                rnd(2) ? 1 : -1,
-                rnd(2) ? 1 : -1
-            );
+            candidates.push({ x, y });
         }
     }
 
+    if (candidates.length < definitions.length) {
+        throw new Error(
+            "Not enough reachable grass for the three special dungeons."
+        );
+    }
+
+    for (const definition of definitions) {
+
+        const index = rnd(candidates.length);
+        const { x, y } = candidates.splice(index, 1)[0];
+
+        map[y][x] = {
+            type: TYPE.GRASS,
+            sprite: definition.sprite,
+            palette: null,
+            dungeon: definition.dungeon.toLowerCase()
+        };
+
+        OVERWORLD_DUNGEONS.push([
+            x,
+            y,
+            definition.dungeon
+        ]);
+    }
+}
 
 /* =====================================================
    WALL BARRIERS
@@ -1079,37 +1163,44 @@ const DIR = [
     ];
 
 	function add_CloudyMountain() {
-		const x = VIEW_W - 2;
-		const y = Math.floor(VIEW_H / 2) - 1;
-		
-		OVERWORLD_DUNGEONS.push([x  , y  , "WHITE"]);
-		OVERWORLD_DUNGEONS.push([x+1, y  , "WHITE"]);
-		OVERWORLD_DUNGEONS.push([x  , y+1, "WHITE"]);
-		OVERWORLD_DUNGEONS.push([x+1, y+1, "WHITE"]);
+		const x = TEST_DUNGEON_PLACEMENT ? 0 : VIEW_W - 2;
+		const y = Math.floor(VIEW_H / 2) +
+			(TEST_DUNGEON_PLACEMENT ? 1 : -1);
+	
+		for (let dy = 0; dy < 2; dy++) {
+			for (let dx = 0; dx < 2; dx++) {
+				map[y + dy][x + dx] = createTerrainTile(
+					TYPE.GRASS, x + dx, y + dy
+				);
+	
+				OVERWORLD_DUNGEONS.push([
+					x + dx, y + dy, "WHITE"
+				]);
+			}
+		}
+	
+		return { x, y: y + 1 };
 	}
 
-    function ensureOverworldPaths(map) {
-    	add_CloudyMountain();
-        const height = map.length;
-        const width = map[0].length;
-
-        const start = {
-            x: 0,
-            y: Math.floor(height / 2)
-        };
-
-        const finish = {
-            x: width - 2,
-            y: Math.floor(height / 2)
-        };
-
-        const inside = (x, y) => mapInside(map, x, y);
-        const key = (x, y) => y * width + x;
-
-        const isCloudyMountain = (x, y) =>
-            x >= width - 2 &&
-            y >= finish.y - 1 &&
-            y <= finish.y;
+	function ensureOverworldPaths(map) {
+		const height = map.length;
+		const width = map[0].length;
+	
+		const start = {
+			x: 0,
+			y: Math.floor(height / 2)
+		};
+	
+		const finish = add_CloudyMountain();
+	
+		const inside = (x, y) => mapInside(map, x, y);
+		const key = (x, y) => y * width + x;
+	
+		const isCloudyMountain = (x, y) =>
+			x >= finish.x &&
+			x <= finish.x + 1 &&
+			y >= finish.y - 1 &&
+			y <= finish.y;
 
         const mountainDefinition = type =>
             ACCESS_MOUNTAINS.find(m => m.type === type);
@@ -1138,17 +1229,6 @@ const DIR = [
 
             OVERWORLD_DUNGEONS.push([x, y, color]);
             addedMountains++;
-        }
-
-        // Clear and record Cloudy Mountain's four tiles.
-        for (let y = finish.y - 1; y <= finish.y; y++) {
-            for (let x = width - 2; x < width; x++) {
-                map[y][x] = createTerrainTile(
-                    TYPE.GRASS, x, y
-                );
-
-                OVERWORLD_DUNGEONS.push([x, y, "WHITE"]);
-            }
         }
 
         map[start.y][start.x] = createTerrainTile(
@@ -1386,13 +1466,16 @@ const DIR = [
         ) {
             const access = explore();
 
-            if (access.reachable.has(key(finish.x, finish.y))) {
-                return {
-                    valid: true,
-                    addedMountains,
-                    inventory: [...access.inventory]
-                };
-            }
+			if (access.reachable.has(key(finish.x, finish.y))) {
+			
+				placeSpecialDungeons(access);
+			
+				return {
+					valid: true,
+					addedMountains,
+					inventory: [...access.inventory]
+				};
+			}
 
             const path = findRepairRoute(access);
             const next = path[0];
