@@ -12,7 +12,7 @@ The game uses JavaScript and HTML5 Canvas, with a deliberately simple retro pres
 
 ## Releases
 
-### Release 1 — [Version / Download Link]
+### Release 1 — [[Version 1](https://github.com/ititititit/intellivision_D-D/releases/tag/V1)]
 
 > Placeholder: update this section to match the first release.
 
@@ -27,7 +27,7 @@ Core adventure functions:
 - Crown collection and the Cloudy Mountain victory objective.
 - Retro sprites, animation, and sound effects.
 
-### Release 2 — [Version / Download Link]
+### Release 2 — [[Version 2](https://github.com/ititititit/intellivision_D-D/releases/tag/V2)]
 
 > Placeholder: update this section to match the second release.
 
